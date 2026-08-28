@@ -5,13 +5,14 @@ services:
     image: postgres:15-alpine
     container_name: caa_postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: caa_password
-      POSTGRES_DB: caa_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta la variable de entorno POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-caa_db}
     ports:
-      - "5433:5432"
+      - "5444:5432"
     volumes:
       - db_data_final:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
 volumes:
   db_data_final:
