@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: caa_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: caa_password
+      POSTGRES_DB: caa_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data_final:/var/lib/postgresql/data
+
+volumes:
+  db_data_final:
