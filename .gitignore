@@ -34,3 +34,6 @@ build/
 
 # Variables de entorno
 .env
+
+# Archivos de contexto y configuración de IA
+*.md
