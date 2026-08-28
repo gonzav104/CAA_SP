@@ -10,7 +10,7 @@
 - [x] Crear paquete `com.caa.api.models`.
 - [x] Mapear entidad `Usuario`.
 - [x] Mapear entidad `Paciente`.
-- [ ] Mapear entidades secundarias (Cartillas, Categorías, Items, Pictogramas).
+- [x] Mapear entidades secundarias (Cartillas, Categorías, Items, Pictogramas).
 
 ## Fases Futuras
 - [ ] Capa de Repositorios (Spring Data JPA).
