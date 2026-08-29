@@ -45,9 +45,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         SimpleGrantedAuthority authority = new SimpleGrantedAuthority(
                                 "ROLE_" + usuario.getRol().name());
 
+                        // Guardamos el EMAIL como principal (no el objeto Usuario).
+                        // Así principal.getName() devuelve el email directamente,
+                        // y el servicio no necesita hacer un extra lookup.
                         UsernamePasswordAuthenticationToken authToken =
                                 new UsernamePasswordAuthenticationToken(
-                                        usuario, null, List.of(authority));
+                                        usuario.getEmail(), null, List.of(authority));
                         authToken.setDetails(
                                 new WebAuthenticationDetailsSource().buildDetails(request));
 
