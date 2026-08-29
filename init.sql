@@ -25,6 +25,7 @@ CREATE TABLE pacientes (
                            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                            terapeuta_id UUID NOT NULL,
                            nombre VARCHAR(100) NOT NULL,
+                           apellido VARCHAR(100) NOT NULL,
                            fecha_nacimiento DATE NOT NULL,
                            creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                            CONSTRAINT fk_paciente_terapeuta FOREIGN KEY (terapeuta_id)
@@ -44,7 +45,23 @@ CREATE TABLE pacientes_familiares (
 );
 
 -- ========================================================
--- 3. TABLAS DE RECURSOS MULTIMEDIA (MODELO HÍBRIDO)
+-- 3. TABLA DE SESIONES / EVOLUCIÓN TERAPÉUTICA
+-- ========================================================
+CREATE TABLE sesiones (
+                          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                          paciente_id UUID NOT NULL,
+                          fecha_hora TIMESTAMP NOT NULL,
+                          disposicion VARCHAR(255),
+                          objetivos_trabajados TEXT NOT NULL,
+                          observaciones TEXT,
+                          estrategias_y_proximos_pasos TEXT,
+                          creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                          CONSTRAINT fk_sesion_paciente FOREIGN KEY (paciente_id)
+                              REFERENCES pacientes(id) ON DELETE CASCADE
+);
+
+-- ========================================================
+-- 4. TABLAS DE RECURSOS MULTIMEDIA (MODELO HÍBRIDO)
 -- ========================================================
 CREATE TABLE pictogramas_globales (
                                       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -64,7 +81,7 @@ CREATE TABLE pictogramas_custom (
 );
 
 -- ========================================================
--- 4. TABLAS DEL TABLERO Y COMUNICACIÓN
+-- 5. TABLAS DEL TABLERO Y COMUNICACIÓN
 -- ========================================================
 CREATE TABLE cartillas (
                            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -109,10 +126,11 @@ CREATE TABLE items_cartilla (
 );
 
 -- ========================================================
--- 5. ÍNDICES DE RENDIMIENTO (OPTIMIZACIÓN DE CONSULTAS)
+-- 6. ÍNDICES DE RENDIMIENTO (OPTIMIZACIÓN DE CONSULTAS)
 -- ========================================================
 CREATE INDEX idx_pacientes_terapeuta ON pacientes(terapeuta_id);
 CREATE INDEX idx_cartillas_paciente ON cartillas(paciente_id);
 CREATE INDEX idx_categorias_cartilla ON categorias(cartilla_id);
 CREATE INDEX idx_items_categoria ON items_cartilla(categoria_id);
 CREATE INDEX idx_pictogramas_custom_paciente ON pictogramas_custom(paciente_id);
+CREATE INDEX idx_sesiones_paciente ON sesiones(paciente_id);

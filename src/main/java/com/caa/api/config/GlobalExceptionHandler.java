@@ -66,7 +66,7 @@ public class GlobalExceptionHandler {
                         "timestamp", LocalDateTime.now().toString(),
                         "status", 500,
                         "error", "Error interno",
-                        "message", ex.getMessage() != null ? ex.getMessage() : "Ocurrio un error inesperado"
+                        "message", "Ocurrio un error inesperado"
                 ));
     }
 }

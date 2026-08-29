@@ -29,7 +29,8 @@ public class JwtService {
     }
 
     /**
-     * Genera un JWT firmado con HS256.
+     * Genera un JWT firmado con HMAC (algoritmo elegido automáticamente según el largo del key:
+     * HS256 si 256-383 bits, HS384 si 384-511 bits, HS512 si 512+ bits).
      * Subject = email, claim "rol" = RolUsuario, issued = ahora, expiracion configurable.
      */
     public String generarToken(Usuario usuario) {
