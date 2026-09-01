@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,6 +36,7 @@ class CartillaServiceTest {
     @Mock private CartillaRepository cartillaRepository;
     @Mock private PacienteRepository pacienteRepository;
     @Mock private UsuarioRepository usuarioRepository;
+    @Mock private PacienteService pacienteService;
 
     @InjectMocks private CartillaServiceImpl cartillaService;
 
@@ -134,8 +136,7 @@ class CartillaServiceTest {
         Cartilla c2 = Cartilla.builder().id(UUID.randomUUID()).paciente(paciente).nombre("A").esPrincipal(true).build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
-                .willReturn(Optional.of(paciente));
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
         given(cartillaRepository.findByPacienteId(pacienteId)).willReturn(List.of(c1, c2));
 
         List<CartillaResponseDTO> resultado = cartillaService.obtenerCartillasDePaciente(pacienteId, "test@ejemplo.com");

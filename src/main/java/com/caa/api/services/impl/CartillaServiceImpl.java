@@ -11,6 +11,7 @@ import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.CartillaService;
+import com.caa.api.services.PacienteService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class CartillaServiceImpl implements CartillaService {
     private final CartillaRepository cartillaRepository;
     private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final PacienteService pacienteService;
 
     @Override
     @Transactional
@@ -47,11 +49,10 @@ public class CartillaServiceImpl implements CartillaService {
     @Override
     @Transactional(readOnly = true)
     public List<CartillaResponseDTO> obtenerCartillasDePaciente(UUID pacienteId, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
 
         return cartillaRepository.findByPacienteId(pacienteId).stream()
                 .map(this::toResponseDTO)

@@ -37,6 +37,7 @@ class CategoriaServiceTest {
     @Mock private CartillaRepository cartillaRepository;
     @Mock private PacienteRepository pacienteRepository;
     @Mock private UsuarioRepository usuarioRepository;
+    @Mock private PacienteService pacienteService;
 
     @InjectMocks private CategoriaServiceImpl categoriaService;
 

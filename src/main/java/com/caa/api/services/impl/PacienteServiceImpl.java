@@ -5,7 +5,11 @@ import com.caa.api.dtos.PacienteRegistroDTO;
 import com.caa.api.dtos.PacienteResponseDTO;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Paciente;
+import com.caa.api.models.PacienteFamiliar;
+import com.caa.api.models.PermisoColaborador;
+import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
+import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.PacienteService;
@@ -20,6 +24,7 @@ public class PacienteServiceImpl implements PacienteService {
 
     private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final PacienteFamiliarRepository pacienteFamiliarRepository;
 
     @Override
     public PacienteResponseDTO registrarPaciente(PacienteRegistroDTO dto, String emailTerapeuta) {
@@ -92,5 +97,41 @@ public class PacienteServiceImpl implements PacienteService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         pacienteRepository.delete(paciente);
+    }
+
+    @Override
+    public Paciente pacienteLegibleParaUsuario(UUID pacienteId, Usuario usuario) {
+        if (usuario.getRol() == RolUsuario.TERAPEUTA) {
+            return pacienteDelTerapeuta(pacienteId, usuario.getId());
+        } else if (usuario.getRol() == RolUsuario.FAMILIAR) {
+            return pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, usuario.getId())
+                    .map(PacienteFamiliar::getPaciente)
+                    .orElseThrow(() -> new RecursoNoEncontradoException(
+                            "No tiene acceso a este paciente"));
+        }
+        throw new RecursoNoEncontradoException("Rol desconocido");
+    }
+
+    @Override
+    public void verificarEdicionParaUsuario(UUID pacienteId, Usuario usuario) {
+        if (usuario.getRol() == RolUsuario.TERAPEUTA) {
+            pacienteDelTerapeuta(pacienteId, usuario.getId());
+        } else if (usuario.getRol() == RolUsuario.FAMILIAR) {
+            PermisoColaborador permiso = pacienteFamiliarRepository
+                    .findByPaciente_IdAndUsuario_Id(pacienteId, usuario.getId())
+                    .map(PacienteFamiliar::getPermiso)
+                    .orElseThrow(() -> new RecursoNoEncontradoException("No tiene acceso a este paciente"));
+            if (permiso != PermisoColaborador.EDICION_LIMITADA) {
+                throw new RecursoNoEncontradoException(
+                        "No tiene permisos de edición sobre este paciente");
+            }
+        } else {
+            throw new RecursoNoEncontradoException("Rol desconocido");
+        }
+    }
+
+    private Paciente pacienteDelTerapeuta(UUID pacienteId, UUID terapeutaId) {
+        return pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
     }
 }

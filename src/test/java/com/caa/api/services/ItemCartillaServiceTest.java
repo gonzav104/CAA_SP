@@ -44,6 +44,7 @@ class ItemCartillaServiceTest {
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private PictogramaGlobalRepository pictogramaGlobalRepository;
     @Mock private PictogramaCustomRepository pictogramaCustomRepository;
+    @Mock private PacienteService pacienteService;
 
     @InjectMocks private ItemCartillaServiceImpl itemCartillaService;
 

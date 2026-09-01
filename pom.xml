@@ -99,6 +99,13 @@
             <artifactId>dotenv-java</artifactId>
             <version>3.2.0</version>
         </dependency>
+
+        <!-- OpenAPI/Swagger: generación automática de la documentación de la API -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.1.0</version>
+        </dependency>
     </dependencies>
 
     <build>

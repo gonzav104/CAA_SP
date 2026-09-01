@@ -13,6 +13,7 @@ import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.CategoriaService;
+import com.caa.api.services.PacienteService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ public class CategoriaServiceImpl implements CategoriaService {
     private final CartillaRepository cartillaRepository;
     private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final PacienteService pacienteService;
 
     @Override
     @Transactional
@@ -59,11 +61,10 @@ public class CategoriaServiceImpl implements CategoriaService {
     @Override
     @Transactional(readOnly = true)
     public List<CategoriaResponseDTO> obtenerCategoriasDeCartilla(UUID pacienteId, UUID cartillaId, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
 
         cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
@@ -77,11 +78,10 @@ public class CategoriaServiceImpl implements CategoriaService {
     @Transactional
     public CategoriaResponseDTO actualizarCategoria(UUID pacienteId, UUID cartillaId, UUID categoriaId,
                                                     CategoriaActualizacionDTO dto, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        pacienteService.verificarEdicionParaUsuario(pacienteId, usuario);
 
         cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
