@@ -5,6 +5,7 @@ import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -30,11 +31,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
-        String header = request.getHeader("Authorization");
+        String token = extractToken(request);
 
-        if (StringUtils.hasText(header) && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
-
+        if (StringUtils.hasText(token)) {
             try {
                 String email = jwtService.validarYObtenerEmail(token);
 
@@ -45,9 +44,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         SimpleGrantedAuthority authority = new SimpleGrantedAuthority(
                                 "ROLE_" + usuario.getRol().name());
 
-                        // Guardamos el EMAIL como principal (no el objeto Usuario).
-                        // Así principal.getName() devuelve el email directamente,
-                        // y el servicio no necesita hacer un extra lookup.
                         UsernamePasswordAuthenticationToken authToken =
                                 new UsernamePasswordAuthenticationToken(
                                         usuario.getEmail(), null, List.of(authority));
@@ -64,5 +60,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Extrae el JWT: primero intenta la cookie "jwt", luego el header Authorization: Bearer.
+     */
+    private String extractToken(HttpServletRequest request) {
+        // 1. Intentar desde cookie
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                if ("jwt".equals(cookie.getName()) && StringUtils.hasText(cookie.getValue())) {
+                    return cookie.getValue();
+                }
+            }
+        }
+
+        // 2. Fallback: header Authorization
+        String header = request.getHeader("Authorization");
+        if (StringUtils.hasText(header) && header.startsWith("Bearer ")) {
+            return header.substring(7);
+        }
+
+        return null;
     }
 }
