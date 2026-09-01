@@ -3,6 +3,7 @@ package com.caa.api.services.impl;
 import com.caa.api.dtos.CartillaActualizacionDTO;
 import com.caa.api.dtos.CartillaRegistroDTO;
 import com.caa.api.dtos.CartillaResponseDTO;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.Usuario;
@@ -28,10 +29,10 @@ public class CartillaServiceImpl implements CartillaService {
     @Transactional
     public CartillaResponseDTO crearCartilla(UUID pacienteId, CartillaRegistroDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         Cartilla cartilla = Cartilla.builder()
                 .paciente(paciente)
@@ -47,10 +48,10 @@ public class CartillaServiceImpl implements CartillaService {
     @Transactional(readOnly = true)
     public List<CartillaResponseDTO> obtenerCartillasDePaciente(UUID pacienteId, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         return cartillaRepository.findByPacienteId(pacienteId).stream()
                 .map(this::toResponseDTO)
@@ -62,13 +63,13 @@ public class CartillaServiceImpl implements CartillaService {
     public CartillaResponseDTO actualizarCartilla(UUID pacienteId, UUID cartillaId,
                                                   CartillaActualizacionDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         cartilla.setNombre(dto.nombre());
         if (dto.esPrincipal() != null) {
@@ -83,13 +84,13 @@ public class CartillaServiceImpl implements CartillaService {
     @Transactional
     public void eliminarCartilla(UUID pacienteId, UUID cartillaId, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         cartillaRepository.delete(cartilla);
     }

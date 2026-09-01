@@ -3,6 +3,7 @@ package com.caa.api.services.impl;
 import com.caa.api.dtos.ItemCartillaActualizacionDTO;
 import com.caa.api.dtos.ItemCartillaRegistroDTO;
 import com.caa.api.dtos.ItemCartillaResponseDTO;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
@@ -41,16 +42,16 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     public ItemCartillaResponseDTO crearItem(UUID pacienteId, UUID cartillaId, UUID categoriaId,
                                              ItemCartillaRegistroDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         Categoria categoria = categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
-                .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));
 
         // Resuelve y valida el recurso (XOR global/custom)
         RecursoResuelto recurso = resolverRecurso(dto.recursoGlobalId(), dto.recursoCustomId(), pacienteId);
@@ -76,16 +77,16 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     public List<ItemCartillaResponseDTO> obtenerItemsDeCategoria(UUID pacienteId, UUID cartillaId,
                                                                  UUID categoriaId, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
-                .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));
 
         return itemCartillaRepository.findByCategoriaIdOrderByOrdenVisualAsc(categoriaId).stream()
                 .map(this::toResponseDTO)
@@ -97,19 +98,19 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     public ItemCartillaResponseDTO actualizarItem(UUID pacienteId, UUID cartillaId, UUID categoriaId, UUID itemId,
                                                   ItemCartillaActualizacionDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
-                .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));
 
         ItemCartilla item = itemCartillaRepository.findByIdAndCategoriaId(itemId, categoriaId)
-                .orElseThrow(() -> new IllegalArgumentException("Item no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Item no encontrado o no tiene permisos"));
 
         RecursoResuelto recurso = resolverRecurso(dto.recursoGlobalId(), dto.recursoCustomId(), pacienteId);
 
@@ -128,19 +129,19 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     @Transactional
     public void eliminarItem(UUID pacienteId, UUID cartillaId, UUID categoriaId, UUID itemId, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
-                .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));
 
         ItemCartilla item = itemCartillaRepository.findByIdAndCategoriaId(itemId, categoriaId)
-                .orElseThrow(() -> new IllegalArgumentException("Item no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Item no encontrado o no tiene permisos"));
 
         itemCartillaRepository.delete(item);
     }
@@ -160,13 +161,13 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
 
         if (tieneGlobal) {
             PictogramaGlobal global = pictogramaGlobalRepository.findById(globalId)
-                    .orElseThrow(() -> new IllegalArgumentException("Pictograma global no encontrado"));
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Pictograma global no encontrado"));
             return new RecursoResuelto(global, null);
         }
 
         // Tiene custom: validar que pertenezca al mismo paciente
         PictogramaCustom custom = pictogramaCustomRepository.findById(customId)
-                .orElseThrow(() -> new IllegalArgumentException("Pictograma custom no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Pictograma custom no encontrado"));
 
         if (!custom.getPaciente().getId().equals(pacienteId)) {
             throw new IllegalArgumentException(

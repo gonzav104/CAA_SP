@@ -2,6 +2,7 @@ package com.caa.api.services.impl;
 
 import com.caa.api.dtos.UsuarioRegistroDTO;
 import com.caa.api.dtos.UsuarioResponseDTO;
+import com.caa.api.exceptions.ConflictoException;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.UsuarioService;
@@ -19,7 +20,7 @@ public class UsuarioServiceImpl implements UsuarioService {
     @Override
     public UsuarioResponseDTO registrarUsuario(UsuarioRegistroDTO dto) {
         if (usuarioRepository.findByEmail(dto.email()).isPresent()) {
-            throw new IllegalArgumentException("El email ya está registrado");
+            throw new ConflictoException("El email ya está registrado");
         }
 
         Usuario usuario = Usuario.builder()

@@ -3,6 +3,7 @@ package com.caa.api.services;
 import com.caa.api.dtos.CartillaActualizacionDTO;
 import com.caa.api.dtos.CartillaRegistroDTO;
 import com.caa.api.dtos.CartillaResponseDTO;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.RolUsuario;
@@ -64,7 +65,7 @@ class CartillaServiceTest {
         CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false);
 
         assertThatThrownBy(() -> cartillaService.crearCartilla(pacienteId, dto, "test@ejemplo.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("no tiene permisos");
 
         org.mockito.Mockito.verify(cartillaRepository, org.mockito.Mockito.never()).save(any());
@@ -78,7 +79,7 @@ class CartillaServiceTest {
         CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false);
 
         assertThatThrownBy(() -> cartillaService.crearCartilla(pacienteId, dto, "nadie@ejemplo.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("Terapeuta no encontrado");
     }
 
@@ -97,7 +98,7 @@ class CartillaServiceTest {
 
         assertThatThrownBy(() ->
                 cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("no tiene permisos");
     }
 

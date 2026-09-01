@@ -1,6 +1,7 @@
 package com.caa.api.services.impl;
 
 import com.caa.api.dtos.PictogramaGlobalResponseDTO;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.services.PictogramaGlobalService;
@@ -28,7 +29,7 @@ public class PictogramaGlobalServiceImpl implements PictogramaGlobalService {
     @Transactional(readOnly = true)
     public PictogramaGlobalResponseDTO obtenerPorId(UUID id) {
         PictogramaGlobal p = pictogramaGlobalRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Pictograma global no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Pictograma global no encontrado"));
         return toResponseDTO(p);
     }
 

@@ -3,6 +3,7 @@ package com.caa.api.services.impl;
 import com.caa.api.dtos.CategoriaActualizacionDTO;
 import com.caa.api.dtos.CategoriaRegistroDTO;
 import com.caa.api.dtos.CategoriaResponseDTO;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.Paciente;
@@ -32,13 +33,13 @@ public class CategoriaServiceImpl implements CategoriaService {
     public CategoriaResponseDTO crearCategoria(UUID pacienteId, UUID cartillaId,
                                                CategoriaRegistroDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         int orden = dto.orden() != null
                 ? dto.orden()
@@ -59,13 +60,13 @@ public class CategoriaServiceImpl implements CategoriaService {
     @Transactional(readOnly = true)
     public List<CategoriaResponseDTO> obtenerCategoriasDeCartilla(UUID pacienteId, UUID cartillaId, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         return categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId).stream()
                 .map(this::toResponseDTO)
@@ -77,16 +78,16 @@ public class CategoriaServiceImpl implements CategoriaService {
     public CategoriaResponseDTO actualizarCategoria(UUID pacienteId, UUID cartillaId, UUID categoriaId,
                                                     CategoriaActualizacionDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         Categoria categoria = categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
-                .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));
 
         categoria.setNombre(dto.nombre());
         categoria.setColorHex(dto.colorHex());
@@ -102,16 +103,16 @@ public class CategoriaServiceImpl implements CategoriaService {
     @Transactional
     public void eliminarCategoria(UUID pacienteId, UUID cartillaId, UUID categoriaId, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new IllegalArgumentException("Cartilla no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         Categoria categoria = categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
-                .orElseThrow(() -> new IllegalArgumentException("Categoría no encontrada o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));
 
         categoriaRepository.delete(categoria);
     }

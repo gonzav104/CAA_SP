@@ -2,6 +2,7 @@ package com.caa.api.services.impl;
 
 import com.caa.api.dtos.SesionRegistroDTO;
 import com.caa.api.dtos.SesionResponseDTO;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.Sesion;
 import com.caa.api.models.Usuario;
@@ -25,10 +26,10 @@ public class SesionServiceImpl implements SesionService {
     @Override
     public SesionResponseDTO registrarSesion(UUID pacienteId, SesionRegistroDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         Sesion sesion = Sesion.builder()
                 .paciente(paciente)
@@ -47,11 +48,11 @@ public class SesionServiceImpl implements SesionService {
     @Override
     public List<SesionResponseDTO> obtenerSesionesDePaciente(UUID pacienteId, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         // Valida que el paciente pertenezca al terapeuta
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         return sesionRepository.findByPacienteId(pacienteId).stream()
                 .map(this::toResponseDTO)

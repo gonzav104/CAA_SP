@@ -1,6 +1,8 @@
 package com.caa.api.config;
 
+import com.caa.api.exceptions.ConflictoException;
 import com.caa.api.exceptions.CredencialesInvalidasException;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import java.time.LocalDateTime;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -54,6 +56,32 @@ public class GlobalExceptionHandler {
                         "timestamp", LocalDateTime.now().toString(),
                         "status", 400,
                         "error", "Solicitud invalida",
+                        "message", ex.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(RecursoNoEncontradoException.class)
+    public ResponseEntity<Map<String, Object>> handleRecursoNoEncontrado(
+            RecursoNoEncontradoException ex) {
+        log.warn("RecursoNoEncontradoException: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 404,
+                        "error", "Recurso no encontrado",
+                        "message", ex.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(ConflictoException.class)
+    public ResponseEntity<Map<String, Object>> handleConflicto(
+            ConflictoException ex) {
+        log.warn("ConflictoException: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 409,
+                        "error", "Conflicto",
                         "message", ex.getMessage()
                 ));
     }

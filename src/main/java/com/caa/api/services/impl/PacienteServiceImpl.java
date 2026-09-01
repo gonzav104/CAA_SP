@@ -3,6 +3,7 @@ package com.caa.api.services.impl;
 import com.caa.api.dtos.PacienteActualizacionDTO;
 import com.caa.api.dtos.PacienteRegistroDTO;
 import com.caa.api.dtos.PacienteResponseDTO;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.PacienteRepository;
@@ -23,7 +24,7 @@ public class PacienteServiceImpl implements PacienteService {
     @Override
     public PacienteResponseDTO registrarPaciente(PacienteRegistroDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         Paciente paciente = Paciente.builder()
                 .nombre(dto.nombre())
@@ -46,7 +47,7 @@ public class PacienteServiceImpl implements PacienteService {
     @Override
     public List<PacienteResponseDTO> obtenerMisPacientes(String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         return pacienteRepository.findByTerapeutaId(terapeuta.getId()).stream()
                 .map(p -> new PacienteResponseDTO(
@@ -62,10 +63,10 @@ public class PacienteServiceImpl implements PacienteService {
     @Override
     public PacienteResponseDTO actualizarPaciente(UUID id, PacienteActualizacionDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(id, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         paciente.setNombre(dto.nombre());
         paciente.setApellido(dto.apellido());
@@ -85,10 +86,10 @@ public class PacienteServiceImpl implements PacienteService {
     @Override
     public void eliminarPaciente(UUID id, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new IllegalArgumentException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
 
         Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(id, terapeuta.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Paciente no encontrado o no tiene permisos"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         pacienteRepository.delete(paciente);
     }

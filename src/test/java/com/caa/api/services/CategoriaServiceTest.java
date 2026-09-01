@@ -2,6 +2,7 @@ package com.caa.api.services;
 
 import com.caa.api.dtos.CategoriaRegistroDTO;
 import com.caa.api.dtos.CategoriaResponseDTO;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.Paciente;
@@ -69,7 +70,7 @@ class CategoriaServiceTest {
 
         assertThatThrownBy(() ->
                 categoriaService.crearCategoria(pacienteId, cartillaId, dto, "test@ejemplo.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("Cartilla no encontrada");
 
         org.mockito.Mockito.verify(categoriaRepository, org.mockito.Mockito.never()).save(any());
