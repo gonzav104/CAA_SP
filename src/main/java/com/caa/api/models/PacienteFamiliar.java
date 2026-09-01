@@ -53,7 +53,7 @@ public class PacienteFamiliar {
 
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
-    @Column(name = "permiso", nullable = false, columnDefinition = "permiso_colaborador")
+    @Column(name = "permiso", nullable = false)
     private PermisoColaborador permiso;
 
     @CreationTimestamp
