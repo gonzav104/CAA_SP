@@ -9,7 +9,11 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface CartillaRepository extends JpaRepository<Cartilla, UUID> {
+    List<Cartilla> findByPacienteId(UUID pacienteId);
+
     List<Cartilla> findByPaciente_Id(UUID pacienteId);
+
+    Optional<Cartilla> findByIdAndPacienteId(UUID id, UUID pacienteId);
 
     Optional<Cartilla> findByPaciente_IdAndEsPrincipalTrue(UUID pacienteId);
 }
