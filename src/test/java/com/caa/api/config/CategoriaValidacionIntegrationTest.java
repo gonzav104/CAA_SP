@@ -30,7 +30,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "jwt.secret=dGVzdC1zZWNyZXQta2V5LWZvci1qd3QtdGVzdHMtMTIzNDU2Nzg5MGFiY2RlZg==",
-        "jwt.expiration-ms=3600000"
+        "jwt.expiration-ms=3600000",
+        "cloudinary.cloud-name=test-cloud",
+        "cloudinary.api-key=test-api-key",
+        "cloudinary.api-secret=test-api-secret"
 })
 @DisplayName("CategoriaDTO — validación de colorHex ante deserialización real")
 class CategoriaValidacionIntegrationTest {

@@ -12,4 +12,6 @@ public interface ItemCartillaRepository extends JpaRepository<ItemCartilla, UUID
     List<ItemCartilla> findByCategoriaIdOrderByOrdenVisualAsc(UUID categoriaId);
 
     Optional<ItemCartilla> findByIdAndCategoriaId(UUID id, UUID categoriaId);
+
+    boolean existsByRecursoCustomId(UUID recursoCustomId);
 }
