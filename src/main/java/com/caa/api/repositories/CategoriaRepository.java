@@ -11,7 +11,5 @@ import org.springframework.stereotype.Repository;
 public interface CategoriaRepository extends JpaRepository<Categoria, UUID> {
     List<Categoria> findByCartillaIdOrderByOrdenAsc(UUID cartillaId);
 
-    List<Categoria> findByCartilla_IdOrderByOrdenAsc(UUID cartillaId);
-
     Optional<Categoria> findByIdAndCartillaId(UUID id, UUID cartillaId);
 }
