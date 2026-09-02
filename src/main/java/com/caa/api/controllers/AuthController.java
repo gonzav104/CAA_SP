@@ -1,6 +1,7 @@
 package com.caa.api.controllers;
 
 import com.caa.api.dtos.AuthResponseDTO;
+import com.caa.api.dtos.GoogleLoginDTO;
 import com.caa.api.dtos.LoginRequestDTO;
 import com.caa.api.services.AuthService;
 import jakarta.servlet.http.Cookie;
@@ -27,14 +28,21 @@ public class AuthController {
 
         AuthResponseDTO authResponse = authService.login(dto);
 
-        Cookie cookie = new Cookie("jwt", authResponse.token());
-        cookie.setHttpOnly(true);
-        cookie.setSecure(false); // true en producción con HTTPS
-        cookie.setPath("/");
-        cookie.setMaxAge(3600); // 1 hora
-        // SameSite se setea vía attribute porque Cookie de jakarta no lo tiene directamente
-        cookie.setAttribute("SameSite", "Lax");
-        response.addCookie(cookie);
+        setJwtCookie(response, authResponse.token());
+
+        // Devolvemos el body sin el token (ya está en la cookie)
+        AuthResponseDTO safeResponse = new AuthResponseDTO(null, authResponse.tipo());
+        return ResponseEntity.ok(safeResponse);
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<AuthResponseDTO> loginConGoogle(
+            @Valid @RequestBody GoogleLoginDTO dto,
+            HttpServletResponse response) {
+
+        AuthResponseDTO authResponse = authService.loginConGoogle(dto.idToken());
+
+        setJwtCookie(response, authResponse.token());
 
         // Devolvemos el body sin el token (ya está en la cookie)
         AuthResponseDTO safeResponse = new AuthResponseDTO(null, authResponse.tipo());
@@ -52,5 +60,16 @@ public class AuthController {
         response.addCookie(cookie);
 
         return ResponseEntity.noContent().build();
+    }
+
+    private void setJwtCookie(HttpServletResponse response, String token) {
+        Cookie cookie = new Cookie("jwt", token);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(false); // true en producción con HTTPS
+        cookie.setPath("/");
+        cookie.setMaxAge(3600); // 1 hora
+        // SameSite se setea vía attribute porque Cookie de jakarta no lo tiene directamente
+        cookie.setAttribute("SameSite", "Lax");
+        response.addCookie(cookie);
     }
 }

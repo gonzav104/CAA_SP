@@ -7,6 +7,7 @@ import com.caa.api.services.JwtService;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import javax.crypto.SecretKey;
@@ -30,6 +31,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -80,6 +82,7 @@ class SecurityIntegrationTest {
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Integration Test")
                 .rol(RolUsuario.TERAPEUTA)
+                .creadoEn(LocalDateTime.of(2026, 9, 1, 10, 0))
                 .build();
     }
 
@@ -166,6 +169,58 @@ class SecurityIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Endpoint público /auth/google → NO requiere token (400 por body vacío, no 401)")
+    void endpointPublico_authGoogle_noRequiereToken() throws Exception {
+        mockMvc.perform(post("/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ──────────────────────────────────────────────
+    //  GET /api/usuarios/me
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("GET /api/usuarios/me SIN token → 401")
+    void me_sinToken_devuelve401() throws Exception {
+        mockMvc.perform(get("/api/usuarios/me")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("GET /api/usuarios/me con token VÁLIDO → 200 con datos del usuario")
+    void me_tokenValido_devuelve200ConDatos() throws Exception {
+        String tokenValido = jwtService.generarToken(usuarioTest);
+        given(usuarioRepository.findByEmail("integration@ejemplo.com"))
+                .willReturn(Optional.of(usuarioTest));
+
+        mockMvc.perform(get("/api/usuarios/me")
+                        .header("Authorization", "Bearer " + tokenValido)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(usuarioTest.getId().toString()))
+                .andExpect(jsonPath("$.email").value("integration@ejemplo.com"))
+                .andExpect(jsonPath("$.nombre").value("Integration Test"))
+                .andExpect(jsonPath("$.rol").value("TERAPEUTA"))
+                .andExpect(jsonPath("$.creadoEn").exists());
+    }
+
+    @Test
+    @DisplayName("GET /api/usuarios/me con token VÁLIDO pero usuario inexistente → 401 genérico")
+    void me_tokenValidoUsuarioInexistente_devuelve401() throws Exception {
+        String tokenValido = jwtService.generarToken(usuarioTest);
+        given(usuarioRepository.findByEmail("integration@ejemplo.com"))
+                .willReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/usuarios/me")
+                        .header("Authorization", "Bearer " + tokenValido)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

@@ -6,6 +6,7 @@ import com.caa.api.exceptions.CredencialesInvalidasException;
 import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.GoogleTokenVerifier.GoogleUsuario;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +38,9 @@ class AuthServiceTest {
 
     @Mock
     private JwtService jwtService;
+
+    @Mock
+    private GoogleTokenVerifier googleTokenVerifier;
 
     @InjectMocks
     private AuthService authService;
@@ -141,5 +145,73 @@ class AuthServiceTest {
         assertThat(response.token()).isEqualTo("jwt-token-falso");
         assertThat(response.tipo()).isEqualTo("Bearer");
         verify(jwtService).generarToken(usuarioExistente);
+    }
+
+    // ──────────────────────────────────────────────
+    //  LOGIN CON GOOGLE
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Login con Google (token válido + usuario EXISTENTE) → devuelve token sin crear usuario")
+    void loginConGoogle_usuarioExistente_devuelveToken() {
+        // Arrange
+        given(googleTokenVerifier.verificar("id-token-valido"))
+                .willReturn(Optional.of(new GoogleUsuario("test@ejemplo.com", "Test User")));
+        given(usuarioRepository.findByEmail("test@ejemplo.com"))
+                .willReturn(Optional.of(usuarioExistente));
+        given(jwtService.generarToken(usuarioExistente))
+                .willReturn("jwt-token-google");
+
+        // Act
+        AuthResponseDTO response = authService.loginConGoogle("id-token-valido");
+
+        // Assert
+        assertThat(response).isNotNull();
+        assertThat(response.token()).isEqualTo("jwt-token-google");
+        assertThat(response.tipo()).isEqualTo("Bearer");
+        verify(jwtService).generarToken(usuarioExistente);
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Login con Google (token válido + usuario NO existente) → crea usuario TERAPEUTA y devuelve token")
+    void loginConGoogle_usuarioNuevo_creaUsuarioTerapeuta() {
+        // Arrange
+        given(googleTokenVerifier.verificar("id-token-valido"))
+                .willReturn(Optional.of(new GoogleUsuario("nuevo@ejemplo.com", "Nuevo Usuario")));
+        given(usuarioRepository.findByEmail("nuevo@ejemplo.com"))
+                .willReturn(Optional.empty());
+        // El save devuelve el usuario persistido
+        given(usuarioRepository.save(any(Usuario.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        given(jwtService.generarToken(any(Usuario.class)))
+                .willReturn("jwt-token-nuevo");
+
+        // Act
+        AuthResponseDTO response = authService.loginConGoogle("id-token-valido");
+
+        // Assert
+        assertThat(response).isNotNull();
+        assertThat(response.token()).isEqualTo("jwt-token-nuevo");
+
+        // El usuario creado debe tener rol TERAPEUTA y una password aleatoria inutilizable
+        verify(usuarioRepository).save(any(Usuario.class));
+        verify(passwordEncoder).encode(anyString());
+    }
+
+    @Test
+    @DisplayName("Login con Google con TOKEN INVÁLIDO → lanza CredencialesInvalidasException")
+    void loginConGoogle_tokenInvalido_lanzaExcepcion() {
+        // Arrange
+        given(googleTokenVerifier.verificar("id-token-invalido"))
+                .willReturn(Optional.empty());
+
+        // Act & Assert
+        assertThatThrownBy(() -> authService.loginConGoogle("id-token-invalido"))
+                .isInstanceOf(CredencialesInvalidasException.class);
+
+        verify(usuarioRepository, never()).findByEmail(anyString());
+        verify(usuarioRepository, never()).save(any());
+        verify(jwtService, never()).generarToken(any());
     }
 }
