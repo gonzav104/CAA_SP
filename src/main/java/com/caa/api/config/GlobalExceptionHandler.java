@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -83,6 +84,29 @@ public class GlobalExceptionHandler {
                         "status", 409,
                         "error", "Conflicto",
                         "message", ex.getMessage()
+                ));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleMetodoNoSoportado(
+            HttpRequestMethodNotSupportedException ex) {
+        log.warn("Metodo HTTP no soportado: {}", ex.getMessage());
+        String metodosPermitidos = ex.getSupportedHttpMethods() == null
+                ? ""
+                : ex.getSupportedHttpMethods().stream()
+                        .map(m -> m.name())
+                        .reduce((a, b) -> a + ", " + b)
+                        .orElse("");
+        String mensaje = metodosPermitidos.isBlank()
+                ? "Método HTTP no soportado para esta ruta"
+                : "Método HTTP no soportado para esta ruta. Métodos permitidos: " + metodosPermitidos;
+
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 405,
+                        "error", "Método no permitido",
+                        "message", mensaje
                 ));
     }
 

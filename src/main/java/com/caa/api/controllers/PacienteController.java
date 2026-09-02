@@ -41,6 +41,14 @@ public class PacienteController {
         return ResponseEntity.ok(pacientes);
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<PacienteResponseDTO> obtenerPaciente(
+            @PathVariable UUID id,
+            Principal principal) {
+        PacienteResponseDTO response = pacienteService.obtenerPaciente(id, principal.getName());
+        return ResponseEntity.ok(response);
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<PacienteResponseDTO> actualizarPaciente(
             @PathVariable UUID id,

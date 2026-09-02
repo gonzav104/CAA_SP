@@ -11,6 +11,7 @@ import java.util.UUID;
 public interface PacienteService {
     PacienteResponseDTO registrarPaciente(PacienteRegistroDTO dto, String emailTerapeuta);
     List<PacienteResponseDTO> obtenerMisPacientes(String emailTerapeuta);
+    PacienteResponseDTO obtenerPaciente(UUID id, String email);
     PacienteResponseDTO actualizarPaciente(UUID id, PacienteActualizacionDTO dto, String emailTerapeuta);
     void eliminarPaciente(UUID id, String emailTerapeuta);
     Paciente pacienteLegibleParaUsuario(UUID pacienteId, Usuario usuario);

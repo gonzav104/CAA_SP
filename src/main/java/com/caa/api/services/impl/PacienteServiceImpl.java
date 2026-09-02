@@ -66,6 +66,23 @@ public class PacienteServiceImpl implements PacienteService {
     }
 
     @Override
+    public PacienteResponseDTO obtenerPaciente(UUID id, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+
+        // Maneja terapeuta propietario y familiar asignado (vía pacienteLegibleParaUsuario)
+        Paciente paciente = pacienteLegibleParaUsuario(id, usuario);
+
+        return new PacienteResponseDTO(
+                paciente.getId(),
+                paciente.getNombre(),
+                paciente.getApellido(),
+                paciente.getFechaNacimiento(),
+                paciente.getCreadoEn()
+        );
+    }
+
+    @Override
     public PacienteResponseDTO actualizarPaciente(UUID id, PacienteActualizacionDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
