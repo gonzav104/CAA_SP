@@ -1,6 +1,7 @@
 package com.caa.api.controllers;
 
 import com.caa.api.dtos.CartillaActualizacionDTO;
+import com.caa.api.dtos.CartillaDetalleResponseDTO;
 import com.caa.api.dtos.CartillaRegistroDTO;
 import com.caa.api.dtos.CartillaResponseDTO;
 import com.caa.api.services.CartillaService;
@@ -42,6 +43,16 @@ public class CartillaController {
             Principal principal) {
         List<CartillaResponseDTO> cartillas = cartillaService.obtenerCartillasDePaciente(pacienteId, principal.getName());
         return ResponseEntity.ok(cartillas);
+    }
+
+    @GetMapping("/{cartillaId}")
+    public ResponseEntity<CartillaDetalleResponseDTO> obtenerCartillaDetalle(
+            @PathVariable UUID pacienteId,
+            @PathVariable UUID cartillaId,
+            Principal principal) {
+        CartillaDetalleResponseDTO detalle = cartillaService.obtenerCartillaDetalle(
+                pacienteId, cartillaId, principal.getName());
+        return ResponseEntity.ok(detalle);
     }
 
     @PutMapping("/{cartillaId}")

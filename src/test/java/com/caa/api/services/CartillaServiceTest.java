@@ -1,15 +1,26 @@
 package com.caa.api.services;
 
 import com.caa.api.dtos.CartillaActualizacionDTO;
+import com.caa.api.dtos.CartillaDetalleResponseDTO;
 import com.caa.api.dtos.CartillaRegistroDTO;
 import com.caa.api.dtos.CartillaResponseDTO;
+import com.caa.api.dtos.CategoriaDetalleResponseDTO;
+import com.caa.api.dtos.ItemDetalleResponseDTO;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
+import com.caa.api.models.Categoria;
+import com.caa.api.models.ItemCartilla;
 import com.caa.api.models.Paciente;
+import com.caa.api.models.PictogramaCustom;
+import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
+import com.caa.api.repositories.CategoriaRepository;
+import com.caa.api.repositories.ItemCartillaRepository;
 import com.caa.api.repositories.PacienteRepository;
+import com.caa.api.repositories.PictogramaCustomRepository;
+import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.impl.CartillaServiceImpl;
 import java.util.List;
@@ -36,6 +47,10 @@ class CartillaServiceTest {
     @Mock private CartillaRepository cartillaRepository;
     @Mock private PacienteRepository pacienteRepository;
     @Mock private UsuarioRepository usuarioRepository;
+    @Mock private CategoriaRepository categoriaRepository;
+    @Mock private ItemCartillaRepository itemCartillaRepository;
+    @Mock private PictogramaGlobalRepository pictogramaGlobalRepository;
+    @Mock private PictogramaCustomRepository pictogramaCustomRepository;
     @Mock private PacienteService pacienteService;
 
     @InjectMocks private CartillaServiceImpl cartillaService;
@@ -144,5 +159,158 @@ class CartillaServiceTest {
         assertThat(resultado).hasSize(2);
         assertThat(resultado.get(0).nombre()).isEqualTo("B");
         assertThat(resultado.get(1).nombre()).isEqualTo("A");
+    }
+
+    // ──────────────────────────────────────────────
+    //  DETALLE DE CARTILLA
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Detalle de cartilla → ensambla categorías, resuelve pictograma GLOBAL y CUSTOM")
+    void obtenerDetalle_correcto_ensamblaYPictogramas() {
+        UUID cartillaId = UUID.randomUUID();
+
+        Cartilla cartilla = Cartilla.builder()
+                .id(cartillaId)
+                .paciente(paciente)
+                .nombre("Cartilla A")
+                .esPrincipal(true)
+                .build();
+
+        Categoria categoria = Categoria.builder()
+                .id(UUID.randomUUID())
+                .cartilla(cartilla)
+                .nombre("Acciones")
+                .colorHex("#FF0000")
+                .orden(0)
+                .build();
+
+        PictogramaGlobal global = PictogramaGlobal.builder()
+                .id(UUID.randomUUID())
+                .etiqueta("Correr")
+                .imagenUrl("http://img/correr.png")
+                .build();
+
+        PictogramaCustom custom = PictogramaCustom.builder()
+                .id(UUID.randomUUID())
+                .paciente(paciente)
+                .etiqueta("Mi foto")
+                .imagenUrl("http://img/mi-foto.png")
+                .build();
+
+        ItemCartilla itemGlobal = ItemCartilla.builder()
+                .id(UUID.randomUUID())
+                .categoria(categoria)
+                .textoHablado("Correr")
+                .ordenVisual(0)
+                .recursoGlobal(global)
+                .build();
+        ItemCartilla itemCustom = ItemCartilla.builder()
+                .id(UUID.randomUUID())
+                .categoria(categoria)
+                .textoHablado("Mi foto")
+                .ordenVisual(1)
+                .recursoCustom(custom)
+                .build();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
+        given(categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId)).willReturn(List.of(categoria));
+        given(itemCartillaRepository.findByCategoriaIdOrderByOrdenVisualAsc(categoria.getId()))
+                .willReturn(List.of(itemGlobal, itemCustom));
+        given(pictogramaGlobalRepository.findById(global.getId())).willReturn(Optional.of(global));
+        given(pictogramaCustomRepository.findById(custom.getId())).willReturn(Optional.of(custom));
+
+        CartillaDetalleResponseDTO detalle =
+                cartillaService.obtenerCartillaDetalle(pacienteId, cartillaId, "test@ejemplo.com");
+
+        assertThat(detalle).isNotNull();
+        assertThat(detalle.id()).isEqualTo(cartillaId);
+        assertThat(detalle.nombre()).isEqualTo("Cartilla A");
+        assertThat(detalle.esPrincipal()).isTrue();
+
+        assertThat(detalle.categorias()).hasSize(1);
+        CategoriaDetalleResponseDTO catDto = detalle.categorias().get(0);
+        assertThat(catDto.nombre()).isEqualTo("Acciones");
+        assertThat(catDto.colorHex()).isEqualTo("#FF0000");
+        assertThat(catDto.orden()).isEqualTo(0);
+
+        assertThat(catDto.items()).hasSize(2);
+        ItemDetalleResponseDTO itemDtoGlobal = catDto.items().get(0);
+        assertThat(itemDtoGlobal.pictograma()).isNotNull();
+        assertThat(itemDtoGlobal.pictograma().tipo()).isEqualTo("GLOBAL");
+        assertThat(itemDtoGlobal.pictograma().etiqueta()).isEqualTo("Correr");
+
+        ItemDetalleResponseDTO itemDtoCustom = catDto.items().get(1);
+        assertThat(itemDtoCustom.pictograma()).isNotNull();
+        assertThat(itemDtoCustom.pictograma().tipo()).isEqualTo("CUSTOM");
+        assertThat(itemDtoCustom.pictograma().etiqueta()).isEqualTo("Mi foto");
+    }
+
+    @Test
+    @DisplayName("Detalle de cartilla → pictograma null cuando el recurso referenciado no existe")
+    void obtenerDetalle_recursoInexistente_pictogramaNull() {
+        UUID cartillaId = UUID.randomUUID();
+
+        Cartilla cartilla = Cartilla.builder()
+                .id(cartillaId)
+                .paciente(paciente)
+                .nombre("Cartilla A")
+                .esPrincipal(false)
+                .build();
+
+        Categoria categoria = Categoria.builder()
+                .id(UUID.randomUUID())
+                .cartilla(cartilla)
+                .nombre("Acciones")
+                .colorHex("#00FF00")
+                .orden(0)
+                .build();
+
+        // Item con recurso global cuyo id ya no existe en el repositorio
+        PictogramaGlobal globalPerdido = PictogramaGlobal.builder()
+                .id(UUID.randomUUID())
+                .etiqueta("Fantasma")
+                .imagenUrl("http://img/fantasma.png")
+                .build();
+
+        ItemCartilla item = ItemCartilla.builder()
+                .id(UUID.randomUUID())
+                .categoria(categoria)
+                .textoHablado("Fantasma")
+                .ordenVisual(0)
+                .recursoGlobal(globalPerdido)
+                .build();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
+        given(categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId)).willReturn(List.of(categoria));
+        given(itemCartillaRepository.findByCategoriaIdOrderByOrdenVisualAsc(categoria.getId()))
+                .willReturn(List.of(item));
+        given(pictogramaGlobalRepository.findById(globalPerdido.getId())).willReturn(Optional.empty());
+
+        CartillaDetalleResponseDTO detalle =
+                cartillaService.obtenerCartillaDetalle(pacienteId, cartillaId, "test@ejemplo.com");
+
+        // El item NO se excluye: queda con pictograma null (el front lo maneja con placeholder)
+        assertThat(detalle.categorias()).hasSize(1);
+        assertThat(detalle.categorias().get(0).items()).hasSize(1);
+        assertThat(detalle.categorias().get(0).items().get(0).pictograma()).isNull();
+    }
+
+    @Test
+    @DisplayName("Detalle de cartilla inexistente o de otro paciente → lanza excepción genérica")
+    void obtenerDetalle_cartillaInexistente_lanzaExcepcion() {
+        UUID cartillaId = UUID.randomUUID();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> cartillaService.obtenerCartillaDetalle(pacienteId, cartillaId, "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
     }
 }
