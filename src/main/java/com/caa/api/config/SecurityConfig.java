@@ -56,6 +56,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/usuarios/registro").permitAll()
                         .requestMatchers("/auth/login").permitAll()
                         .requestMatchers("/auth/google").permitAll()
+                        .requestMatchers("/auth/google/completar-registro").permitAll()
                         .requestMatchers("/auth/logout").permitAll()
                         .requestMatchers("/v3/api-docs/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()

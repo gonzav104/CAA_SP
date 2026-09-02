@@ -50,19 +50,36 @@ public class PacienteServiceImpl implements PacienteService {
     }
 
     @Override
-    public List<PacienteResponseDTO> obtenerMisPacientes(String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+    public List<PacienteResponseDTO> obtenerMisPacientes(String emailUsuario) {
+        Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        return pacienteRepository.findByTerapeutaId(terapeuta.getId()).stream()
-                .map(p -> new PacienteResponseDTO(
-                        p.getId(),
-                        p.getNombre(),
-                        p.getApellido(),
-                        p.getFechaNacimiento(),
-                        p.getCreadoEn()
-                ))
-                .toList();
+        if (usuario.getRol() == RolUsuario.TERAPEUTA) {
+            return pacienteRepository.findByTerapeutaId(usuario.getId()).stream()
+                    .map(p -> new PacienteResponseDTO(
+                            p.getId(),
+                            p.getNombre(),
+                            p.getApellido(),
+                            p.getFechaNacimiento(),
+                            p.getCreadoEn(),
+                            null
+                    ))
+                    .toList();
+        } else if (usuario.getRol() == RolUsuario.FAMILIAR) {
+            return pacienteFamiliarRepository.findByUsuario_Id(usuario.getId()).stream()
+                    .map(PacienteFamiliar::getPaciente)
+                    .map(p -> new PacienteResponseDTO(
+                            p.getId(),
+                            p.getNombre(),
+                            p.getApellido(),
+                            p.getFechaNacimiento(),
+                            p.getCreadoEn(),
+                            obtenerPermisoParaUsuario(p.getId(), usuario)
+                    ))
+                    .toList();
+        }
+
+        throw new RecursoNoEncontradoException("Rol desconocido");
     }
 
     @Override
@@ -73,12 +90,15 @@ public class PacienteServiceImpl implements PacienteService {
         // Maneja terapeuta propietario y familiar asignado (vía pacienteLegibleParaUsuario)
         Paciente paciente = pacienteLegibleParaUsuario(id, usuario);
 
+        PermisoColaborador miPermiso = obtenerPermisoParaUsuario(id, usuario);
+
         return new PacienteResponseDTO(
                 paciente.getId(),
                 paciente.getNombre(),
                 paciente.getApellido(),
                 paciente.getFechaNacimiento(),
-                paciente.getCreadoEn()
+                paciente.getCreadoEn(),
+                miPermiso
         );
     }
 
@@ -150,5 +170,20 @@ public class PacienteServiceImpl implements PacienteService {
     private Paciente pacienteDelTerapeuta(UUID pacienteId, UUID terapeutaId) {
         return pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+    }
+
+    /**
+     * Resuelve el permiso de colaboración del usuario autenticado sobre el paciente.
+     * Devuelve null para terapeuta (es propietario, no colaborador) y para usuarios sin
+     * vínculo de colaboración.
+     */
+    private PermisoColaborador obtenerPermisoParaUsuario(UUID pacienteId, Usuario usuario) {
+        if (usuario.getRol() == RolUsuario.FAMILIAR) {
+            return pacienteFamiliarRepository
+                    .findByPaciente_IdAndUsuario_Id(pacienteId, usuario.getId())
+                    .map(PacienteFamiliar::getPermiso)
+                    .orElse(null);
+        }
+        return null;
     }
 }

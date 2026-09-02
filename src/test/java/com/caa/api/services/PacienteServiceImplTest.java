@@ -14,6 +14,7 @@ import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.impl.PacienteServiceImpl;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -101,6 +102,50 @@ class PacienteServiceImplTest {
     }
 
     @Test
+    @DisplayName("Terapeuta propietario → miPermiso es null")
+    void terapeutaPropietario_miPermisoNull() {
+        given(usuarioRepository.findByEmail("terapeuta@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+
+        PacienteResponseDTO dto = pacienteService.obtenerPaciente(pacienteId, "terapeuta@ejemplo.com");
+
+        assertThat(dto.miPermiso()).isNull();
+    }
+
+    @Test
+    @DisplayName("Familiar con EDICION_LIMITADA → miPermiso es EDICION_LIMITADA")
+    void familiarEdicionLimitada_miPermisoEdicionLimitada() {
+        Usuario familiarEdicion = Usuario.builder().id(familiarId).rol(RolUsuario.FAMILIAR).build();
+        PacienteFamiliar vinculoEdicion = PacienteFamiliar.builder()
+                .id(new PacienteFamiliarId(pacienteId, familiarId))
+                .paciente(paciente)
+                .usuario(familiarEdicion)
+                .permiso(PermisoColaborador.EDICION_LIMITADA)
+                .build();
+
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiarEdicion));
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
+                .willReturn(Optional.of(vinculoEdicion));
+
+        PacienteResponseDTO dto = pacienteService.obtenerPaciente(pacienteId, "familiar@ejemplo.com");
+
+        assertThat(dto.miPermiso()).isEqualTo(PermisoColaborador.EDICION_LIMITADA);
+    }
+
+    @Test
+    @DisplayName("Familiar con LECTURA → miPermiso es LECTURA")
+    void familiarLectura_miPermisoLectura() {
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
+                .willReturn(Optional.of(vinculo()));
+
+        PacienteResponseDTO dto = pacienteService.obtenerPaciente(pacienteId, "familiar@ejemplo.com");
+
+        assertThat(dto.miPermiso()).isEqualTo(PermisoColaborador.LECTURA);
+    }
+
+    @Test
     @DisplayName("Paciente inexistente o ajeno → lanza excepción 404")
     void pacienteInexistente_lanzaExcepcion() {
         given(usuarioRepository.findByEmail("terapeuta@ejemplo.com")).willReturn(Optional.of(terapeuta));
@@ -120,5 +165,33 @@ class PacienteServiceImplTest {
         assertThatThrownBy(() -> pacienteService.obtenerPaciente(pacienteId, "nadie@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("no encontrado");
+    }
+
+    @Test
+    @DisplayName("obtenerMisPacientes para TERAPEUTA → lista por terapeuta y miPermiso null")
+    void obtenerMisPacientes_terapeuta() {
+        given(usuarioRepository.findByEmail("terapeuta@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByTerapeutaId(terapeutaId)).willReturn(List.of(paciente));
+
+        List<PacienteResponseDTO> dtos = pacienteService.obtenerMisPacientes("terapeuta@ejemplo.com");
+
+        assertThat(dtos).hasSize(1);
+        assertThat(dtos.getFirst().id()).isEqualTo(pacienteId);
+        assertThat(dtos.getFirst().miPermiso()).isNull();
+    }
+
+    @Test
+    @DisplayName("obtenerMisPacientes para FAMILIAR → lista sus pacientes vinculados con permiso")
+    void obtenerMisPacientes_familiar() {
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+        given(pacienteFamiliarRepository.findByUsuario_Id(familiarId)).willReturn(List.of(vinculo()));
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
+                .willReturn(Optional.of(vinculo()));
+
+        List<PacienteResponseDTO> dtos = pacienteService.obtenerMisPacientes("familiar@ejemplo.com");
+
+        assertThat(dtos).hasSize(1);
+        assertThat(dtos.getFirst().id()).isEqualTo(pacienteId);
+        assertThat(dtos.getFirst().miPermiso()).isEqualTo(PermisoColaborador.LECTURA);
     }
 }

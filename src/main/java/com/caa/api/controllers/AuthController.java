@@ -1,9 +1,12 @@
 package com.caa.api.controllers;
 
 import com.caa.api.dtos.AuthResponseDTO;
+import com.caa.api.dtos.GoogleAuthResponseDTO;
+import com.caa.api.dtos.GoogleCompletarRegistroDTO;
 import com.caa.api.dtos.GoogleLoginDTO;
 import com.caa.api.dtos.LoginRequestDTO;
 import com.caa.api.services.AuthService;
+import com.caa.api.services.AuthService.GoogleLoginResult;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -30,23 +33,32 @@ public class AuthController {
 
         setJwtCookie(response, authResponse.token());
 
-        // Devolvemos el body sin el token (ya está en la cookie)
         AuthResponseDTO safeResponse = new AuthResponseDTO(null, authResponse.tipo());
         return ResponseEntity.ok(safeResponse);
     }
 
     @PostMapping("/google")
-    public ResponseEntity<AuthResponseDTO> loginConGoogle(
+    public ResponseEntity<GoogleAuthResponseDTO> loginConGoogle(
             @Valid @RequestBody GoogleLoginDTO dto,
             HttpServletResponse response) {
 
-        AuthResponseDTO authResponse = authService.loginConGoogle(dto.idToken());
+        GoogleLoginResult result = authService.loginConGoogle(dto.idToken());
 
-        setJwtCookie(response, authResponse.token());
+        result.token().ifPresent(token -> setJwtCookie(response, token));
 
-        // Devolvemos el body sin el token (ya está en la cookie)
-        AuthResponseDTO safeResponse = new AuthResponseDTO(null, authResponse.tipo());
-        return ResponseEntity.ok(safeResponse);
+        return ResponseEntity.ok(result.dto());
+    }
+
+    @PostMapping("/google/completar-registro")
+    public ResponseEntity<GoogleAuthResponseDTO> completarRegistroGoogle(
+            @Valid @RequestBody GoogleCompletarRegistroDTO dto,
+            HttpServletResponse response) {
+
+        GoogleLoginResult result = authService.completarRegistroGoogle(dto);
+
+        result.token().ifPresent(token -> setJwtCookie(response, token));
+
+        return ResponseEntity.ok(result.dto());
     }
 
     @PostMapping("/logout")
@@ -65,10 +77,9 @@ public class AuthController {
     private void setJwtCookie(HttpServletResponse response, String token) {
         Cookie cookie = new Cookie("jwt", token);
         cookie.setHttpOnly(true);
-        cookie.setSecure(false); // true en producción con HTTPS
+        cookie.setSecure(false);
         cookie.setPath("/");
-        cookie.setMaxAge(3600); // 1 hora
-        // SameSite se setea vía attribute porque Cookie de jakarta no lo tiene directamente
+        cookie.setMaxAge(3600);
         cookie.setAttribute("SameSite", "Lax");
         response.addCookie(cookie);
     }

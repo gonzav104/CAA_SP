@@ -106,8 +106,8 @@ class CartillaServiceTest {
         UUID cartillaId = UUID.randomUUID();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
-                .willReturn(Optional.of(paciente));
+        org.mockito.BDDMockito.willDoNothing()
+                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.empty());
 
@@ -117,6 +117,120 @@ class CartillaServiceTest {
                 cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("no tiene permisos");
+    }
+
+    @Test
+    @DisplayName("Terapeuta propietario → puede actualizar la cartilla")
+    void actualizar_terapeutaPropietario_puedeActualizar() {
+        UUID cartillaId = UUID.randomUUID();
+        Cartilla cartilla = Cartilla.builder()
+                .id(cartillaId)
+                .paciente(paciente)
+                .nombre("Nombre viejo")
+                .esPrincipal(false)
+                .build();
+        Cartilla cartillaActualizada = Cartilla.builder()
+                .id(cartillaId)
+                .paciente(paciente)
+                .nombre("Nombre nuevo")
+                .esPrincipal(true)
+                .build();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        org.mockito.BDDMockito.willDoNothing()
+                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
+        given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartillaActualizada);
+
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", true);
+
+        CartillaResponseDTO response = cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com");
+
+        assertThat(response.nombre()).isEqualTo("Nombre nuevo");
+        assertThat(response.esPrincipal()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Familiar con EDICION_LIMITADA → puede actualizar la cartilla")
+    void actualizar_familiarEdicionLimitada_puedeActualizar() {
+        UUID familiarId = UUID.randomUUID();
+        UUID cartillaId = UUID.randomUUID();
+        Usuario familiar = Usuario.builder()
+                .id(familiarId)
+                .email("familiar@ejemplo.com")
+                .rol(RolUsuario.FAMILIAR)
+                .build();
+        Cartilla cartilla = Cartilla.builder()
+                .id(cartillaId)
+                .paciente(paciente)
+                .nombre("Nombre viejo")
+                .esPrincipal(false)
+                .build();
+        Cartilla cartillaActualizada = Cartilla.builder()
+                .id(cartillaId)
+                .paciente(paciente)
+                .nombre("Nombre nuevo")
+                .esPrincipal(false)
+                .build();
+
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+        org.mockito.BDDMockito.willDoNothing()
+                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
+        given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartillaActualizada);
+
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
+
+        CartillaResponseDTO response = cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "familiar@ejemplo.com");
+
+        assertThat(response.nombre()).isEqualTo("Nombre nuevo");
+        org.mockito.Mockito.verify(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
+    }
+
+    @Test
+    @DisplayName("Familiar con LECTURA → NO puede actualizar la cartilla")
+    void actualizar_familiarLectura_lanzaExcepcion() {
+        UUID familiarId = UUID.randomUUID();
+        UUID cartillaId = UUID.randomUUID();
+        Usuario familiar = Usuario.builder()
+                .id(familiarId)
+                .email("familiar@ejemplo.com")
+                .rol(RolUsuario.FAMILIAR)
+                .build();
+
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+        org.mockito.BDDMockito.willThrow(new RecursoNoEncontradoException(
+                        "No tiene permisos de edición sobre este paciente"))
+                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
+
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
+
+        assertThatThrownBy(() ->
+                cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "familiar@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("No tiene permisos de edición");
+
+        org.mockito.Mockito.verify(cartillaRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Terapeuta de OTRO paciente → NO puede actualizar la cartilla")
+    void actualizar_terapeutaOtroPaciente_lanzaExcepcion() {
+        UUID cartillaId = UUID.randomUUID();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        org.mockito.BDDMockito.willThrow(new RecursoNoEncontradoException(
+                        "Paciente no encontrado o no tiene permisos"))
+                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
+
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
+
+        assertThatThrownBy(() ->
+                cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
+
+        org.mockito.Mockito.verify(cartillaRepository, org.mockito.Mockito.never()).save(any());
     }
 
     @Test

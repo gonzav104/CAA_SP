@@ -105,12 +105,12 @@ public class CartillaServiceImpl implements CartillaService {
     @Override
     @Transactional
     public CartillaResponseDTO actualizarCartilla(UUID pacienteId, UUID cartillaId,
-                                                  CartillaActualizacionDTO dto, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+                                                  CartillaActualizacionDTO dto, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        // Permite terapeuta propietario y familiar con EDICION_LIMITADA (igual que Categoria/Item)
+        pacienteService.verificarEdicionParaUsuario(pacienteId, usuario);
 
         Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));

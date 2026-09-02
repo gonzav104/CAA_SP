@@ -9,6 +9,7 @@ import com.caa.api.models.Usuario;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.SesionRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.PacienteService;
 import com.caa.api.services.SesionService;
 import java.util.List;
 import java.util.UUID;
@@ -22,6 +23,7 @@ public class SesionServiceImpl implements SesionService {
     private final SesionRepository sesionRepository;
     private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final PacienteService pacienteService;
 
     @Override
     public SesionResponseDTO registrarSesion(UUID pacienteId, SesionRegistroDTO dto, String emailTerapeuta) {
@@ -46,13 +48,13 @@ public class SesionServiceImpl implements SesionService {
     }
 
     @Override
-    public List<SesionResponseDTO> obtenerSesionesDePaciente(UUID pacienteId, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+    public List<SesionResponseDTO> obtenerSesionesDePaciente(UUID pacienteId, String emailUsuario) {
+        Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Valida que el paciente pertenezca al terapeuta
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        // Permite leer al terapeuta propietario Y al familiar asignado (solo lectura).
+        // Cualquiera sin acceso → 404 (el helper lanza la excepción del dominio).
+        pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
 
         return sesionRepository.findByPacienteId(pacienteId).stream()
                 .map(this::toResponseDTO)
