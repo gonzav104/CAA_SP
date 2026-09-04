@@ -34,18 +34,14 @@ public class ColaboradorServiceImpl implements ColaboradorService {
         Usuario terapeuta = terapeutaAutenticado(emailTerapeuta);
         Paciente paciente = pacienteDelTerapeuta(pacienteId, terapeuta.getId());
 
+        // C1+C2: indistinguible entre "cuenta inexistente" y "rol ≠ FAMILIAR" (404 genérico)
         Usuario familiar = usuarioRepository.findByEmail(dto.email())
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "No existe un usuario con el email " + dto.email()));
-
-        if (familiar.getRol() != RolUsuario.FAMILIAR) {
-            throw new IllegalArgumentException(
-                    "Solo se pueden vincular usuarios con rol FAMILIAR");
-        }
+                .filter(u -> u.getRol() == RolUsuario.FAMILIAR)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         if (pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()).isPresent()) {
             throw new ConflictoException(
-                    "El usuario ya es colaborador de este paciente");
+                    "No se puede vincular este usuario");
         }
 
         PacienteFamiliarId id = new PacienteFamiliarId(paciente.getId(), familiar.getId());
@@ -80,8 +76,7 @@ public class ColaboradorServiceImpl implements ColaboradorService {
 
         PacienteFamiliar vinculo = pacienteFamiliarRepository
                 .findByPaciente_IdAndUsuario_Id(pacienteId, usuarioId)
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "El usuario no es colaborador de este paciente"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         vinculo.setPermiso(dto.permiso());
         PacienteFamiliar actualizado = pacienteFamiliarRepository.save(vinculo);
@@ -96,8 +91,7 @@ public class ColaboradorServiceImpl implements ColaboradorService {
 
         PacienteFamiliar vinculo = pacienteFamiliarRepository
                 .findByPaciente_IdAndUsuario_Id(pacienteId, usuarioId)
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "El usuario no es colaborador de este paciente"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         pacienteFamiliarRepository.delete(vinculo);
     }
@@ -108,7 +102,7 @@ public class ColaboradorServiceImpl implements ColaboradorService {
 
     private Usuario terapeutaAutenticado(String email) {
         return usuarioRepository.findByEmail(email)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
     }
 
     private Paciente pacienteDelTerapeuta(UUID pacienteId, UUID terapeutaId) {

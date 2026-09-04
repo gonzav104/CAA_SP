@@ -114,7 +114,7 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
     @Transactional
     public void eliminarPictograma(UUID pacienteId, UUID id, String emailUsuario) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailUsuario)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));

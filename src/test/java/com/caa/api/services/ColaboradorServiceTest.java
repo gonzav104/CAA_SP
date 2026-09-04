@@ -109,7 +109,7 @@ class ColaboradorServiceTest {
     }
 
     @Test
-    @DisplayName("Vincular con email de usuario inexistente → RecursoNoEncontradoException")
+    @DisplayName("Vincular con email de usuario inexistente → 404 genérico \"Usuario no encontrado\"")
     void vincular_usuarioNoExiste_lanzaExcepcion() {
         givenOwnership();
         given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
@@ -118,13 +118,13 @@ class ColaboradorServiceTest {
 
         assertThatThrownBy(() -> colaboradorService.vincularColaborador(pacienteId, dto, emailTerapeuta))
                 .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("No existe un usuario");
+                .hasMessageContaining("Usuario no encontrado");
 
         verify(pacienteFamiliarRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Vincular a un usuario con rol TERAPEUTA → 400 (IllegalArgumentException)")
+    @DisplayName("Vincular con cuenta rol TERAPEUTA → 404 genérico (indistinguible de inexistente)")
     void vincular_usuarioEsTerapeuta_lanzaExcepcion() {
         givenOwnership();
         Usuario otroTerapeuta = Usuario.builder()
@@ -138,14 +138,28 @@ class ColaboradorServiceTest {
         ColaboradorRegistroDTO dto = new ColaboradorRegistroDTO("otro@ejemplo.com", PermisoColaborador.LECTURA);
 
         assertThatThrownBy(() -> colaboradorService.vincularColaborador(pacienteId, dto, emailTerapeuta))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Solo se pueden vincular usuarios con rol FAMILIAR");
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Usuario no encontrado");
 
         verify(pacienteFamiliarRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Vincular a un usuario que ya es colaborador → ConflictoException (409)")
+    @DisplayName("Vincular con terapeuta autenticado inexistente → 404 genérico \"Usuario no encontrado\" (helper :111)")
+    void vincular_terapeutaInexistente_lanzaExcepcion() {
+        given(usuarioRepository.findByEmail(emailTerapeuta)).willReturn(Optional.empty());
+
+        ColaboradorRegistroDTO dto = new ColaboradorRegistroDTO("mama@ejemplo.com", PermisoColaborador.LECTURA);
+
+        assertThatThrownBy(() -> colaboradorService.vincularColaborador(pacienteId, dto, emailTerapeuta))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Usuario no encontrado");
+
+        verify(pacienteFamiliarRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Vincular a un usuario que ya es colaborador → ConflictoException (409, texto neutro)")
     void vincular_yaEsColaborador_lanzaConflicto() {
         givenOwnership();
         given(usuarioRepository.findByEmail("mama@ejemplo.com")).willReturn(Optional.of(familiar));
@@ -156,7 +170,7 @@ class ColaboradorServiceTest {
 
         assertThatThrownBy(() -> colaboradorService.vincularColaborador(pacienteId, dto, emailTerapeuta))
                 .isInstanceOf(ConflictoException.class)
-                .hasMessageContaining("ya es colaborador");
+                .hasMessageContaining("No se puede vincular este usuario");
 
         verify(pacienteFamiliarRepository, never()).save(any());
     }
@@ -219,7 +233,7 @@ class ColaboradorServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Cambiar permiso de colaborador que no es del paciente → RecursoNoEncontradoException")
+    @DisplayName("Cambiar permiso de colaborador que no es del paciente → 404 genérico \"Usuario no encontrado\"")
     void actualizar_noEsColaborador_lanzaExcepcion() {
         givenOwnership();
         given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
@@ -229,7 +243,7 @@ class ColaboradorServiceTest {
 
         assertThatThrownBy(() -> colaboradorService.actualizarPermiso(pacienteId, familiarId, dto, emailTerapeuta))
                 .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("no es colaborador");
+                .hasMessageContaining("Usuario no encontrado");
 
         verify(pacienteFamiliarRepository, never()).save(any());
     }
@@ -262,7 +276,7 @@ class ColaboradorServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Revocar un colaborador que no es del paciente → RecursoNoEncontradoException")
+    @DisplayName("Revocar un colaborador que no es del paciente → 404 genérico \"Usuario no encontrado\"")
     void revocar_noEsColaborador_lanzaExcepcion() {
         givenOwnership();
         given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
@@ -270,7 +284,7 @@ class ColaboradorServiceTest {
 
         assertThatThrownBy(() -> colaboradorService.revocarColaborador(pacienteId, familiarId, emailTerapeuta))
                 .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("no es colaborador");
+                .hasMessageContaining("Usuario no encontrado");
 
         verify(pacienteFamiliarRepository, never()).delete(any());
     }

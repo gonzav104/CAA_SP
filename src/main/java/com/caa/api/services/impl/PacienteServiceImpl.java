@@ -29,7 +29,7 @@ public class PacienteServiceImpl implements PacienteService {
     @Override
     public PacienteResponseDTO registrarPaciente(PacienteRegistroDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         Paciente paciente = Paciente.builder()
                 .nombre(dto.nombre())
@@ -85,7 +85,7 @@ public class PacienteServiceImpl implements PacienteService {
     @Override
     public PacienteResponseDTO obtenerPaciente(UUID id, String email) {
         Usuario usuario = usuarioRepository.findByEmail(email)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Maneja terapeuta propietario y familiar asignado (vía pacienteLegibleParaUsuario)
         Paciente paciente = pacienteLegibleParaUsuario(id, usuario);
@@ -105,7 +105,7 @@ public class PacienteServiceImpl implements PacienteService {
     @Override
     public PacienteResponseDTO actualizarPaciente(UUID id, PacienteActualizacionDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(id, terapeuta.getId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
@@ -128,7 +128,7 @@ public class PacienteServiceImpl implements PacienteService {
     @Override
     public void eliminarPaciente(UUID id, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(id, terapeuta.getId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));

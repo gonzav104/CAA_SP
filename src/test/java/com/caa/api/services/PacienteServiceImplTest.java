@@ -1,5 +1,7 @@
 package com.caa.api.services;
 
+import com.caa.api.dtos.PacienteActualizacionDTO;
+import com.caa.api.dtos.PacienteRegistroDTO;
 import com.caa.api.dtos.PacienteResponseDTO;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Paciente;
@@ -158,13 +160,47 @@ class PacienteServiceImplTest {
     }
 
     @Test
-    @DisplayName("Usuario inexistente → lanza excepción")
+    @DisplayName("Usuario inexistente → lanza 404 genérico \"Usuario no encontrado\"")
     void usuarioInexistente_lanzaExcepcion() {
         given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> pacienteService.obtenerPaciente(pacienteId, "nadie@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("no encontrado");
+                .hasMessageContaining("Usuario no encontrado");
+    }
+
+    @Test
+    @DisplayName("registrarPaciente con principal inexistente → 404 genérico \"Usuario no encontrado\"")
+    void registrarPaciente_principalInexistente_lanzaExcepcion() {
+        given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
+
+        PacienteRegistroDTO dto = new PacienteRegistroDTO("Nico", "Perez", LocalDate.of(2020, 5, 10));
+
+        assertThatThrownBy(() -> pacienteService.registrarPaciente(dto, "nadie@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Usuario no encontrado");
+    }
+
+    @Test
+    @DisplayName("actualizarPaciente con principal inexistente → 404 genérico \"Usuario no encontrado\"")
+    void actualizarPaciente_principalInexistente_lanzaExcepcion() {
+        given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
+
+        PacienteActualizacionDTO dto = new PacienteActualizacionDTO("Nico", "Perez", LocalDate.of(2020, 5, 10));
+
+        assertThatThrownBy(() -> pacienteService.actualizarPaciente(pacienteId, dto, "nadie@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Usuario no encontrado");
+    }
+
+    @Test
+    @DisplayName("eliminarPaciente con principal inexistente → 404 genérico \"Usuario no encontrado\"")
+    void eliminarPaciente_principalInexistente_lanzaExcepcion() {
+        given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> pacienteService.eliminarPaciente(pacienteId, "nadie@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Usuario no encontrado");
     }
 
     @Test

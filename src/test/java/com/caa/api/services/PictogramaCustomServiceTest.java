@@ -236,6 +236,17 @@ class PictogramaCustomServiceTest {
     }
 
     @Test
+    @DisplayName("DELETE → principal inexistente → 404 genérico \"Usuario no encontrado\"")
+    void eliminar_principalInexistente_lanzaExcepcion() {
+        given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> pictogramaCustomService.eliminarPictograma(pacienteId, pictogramaId, "nadie@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Usuario no encontrado");
+        verify(pacienteRepository, never()).findByIdAndTerapeutaId(any(), any());
+    }
+
+    @Test
     @DisplayName("DELETE → pictograma en uso en un ítem → IllegalArgumentException (400, no se borra)")
     void eliminar_enUso_lanza400() {
         given(usuarioRepository.findByEmail(terapeuta.getEmail())).willReturn(Optional.of(terapeuta));

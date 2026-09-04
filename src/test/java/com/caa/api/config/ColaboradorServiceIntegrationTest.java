@@ -106,7 +106,7 @@ class ColaboradorServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("Vincular un usuario que ya es colaborador → ConflictoException (409) real")
+    @DisplayName("Vincular un usuario que ya es colaborador → ConflictoException (409, texto neutro) real")
     void vincularDuplicadoLanzaConflicto() {
         colaboradorService.vincularColaborador(
                 paciente.getId(), new ColaboradorRegistroDTO(familiar.getEmail(), PermisoColaborador.LECTURA),
@@ -116,7 +116,7 @@ class ColaboradorServiceIntegrationTest {
                 paciente.getId(), new ColaboradorRegistroDTO(familiar.getEmail(), PermisoColaborador.EDICION_LIMITADA),
                 terapeuta.getEmail()))
                 .isInstanceOf(ConflictoException.class)
-                .hasMessageContaining("ya es colaborador");
+                .hasMessageContaining("No se puede vincular este usuario");
     }
 
     @Test
@@ -144,13 +144,13 @@ class ColaboradorServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("Vincular a un usuario TERAPEUTA → 400 (IllegalArgumentException) real")
+    @DisplayName("Vincular a un usuario TERAPEUTA → 404 genérico \"Usuario no encontrado\" real (indistinguible de inexistente)")
     void vincularTerapeutaLanzaExcepcion() {
         assertThatThrownBy(() -> colaboradorService.vincularColaborador(
                 paciente.getId(),
                 new ColaboradorRegistroDTO(terapeuta.getEmail(), PermisoColaborador.LECTURA),
                 terapeuta.getEmail()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Solo se pueden vincular usuarios con rol FAMILIAR");
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Usuario no encontrado");
     }
 }

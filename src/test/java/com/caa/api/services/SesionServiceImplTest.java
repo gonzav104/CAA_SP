@@ -183,6 +183,25 @@ class SesionServiceImplTest {
     }
 
     @Test
+    @DisplayName("Registrar sesión con principal inexistente → 404 genérico \"Usuario no encontrado\"")
+    void registrar_principalInexistente_lanzaExcepcion() {
+        given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
+
+        SesionRegistroDTO dto = new SesionRegistroDTO(
+                LocalDateTime.of(2026, 9, 2, 9, 0),
+                "sentado",
+                "Objetivo",
+                null,
+                null);
+
+        assertThatThrownBy(() -> sesionService.registrarSesion(pacienteId, dto, "nadie@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Usuario no encontrado");
+
+        verify(sesionRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("Familiar asignado → NO puede registrar una sesión (terapeuta-only)")
     void registrar_familiar_lanzaExcepcion() {
         UUID familiarId = UUID.randomUUID();
