@@ -406,10 +406,12 @@ class CartillaServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Obtener cartillas de paciente legible → devuelve lista ordenada")
+    @DisplayName("Obtener cartillas de paciente legible → devuelve lista ordenada con creadorId")
     void obtener_correcto_devuelveLista() {
-        Cartilla c1 = Cartilla.builder().id(UUID.randomUUID()).paciente(paciente).nombre("B").esPrincipal(false).build();
-        Cartilla c2 = Cartilla.builder().id(UUID.randomUUID()).paciente(paciente).nombre("A").esPrincipal(true).build();
+        Cartilla c1 = Cartilla.builder().id(UUID.randomUUID()).paciente(paciente).creador(terapeuta)
+                .nombre("B").esPrincipal(false).build();
+        Cartilla c2 = Cartilla.builder().id(UUID.randomUUID()).paciente(paciente).creador(terapeuta)
+                .nombre("A").esPrincipal(true).build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
         given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
@@ -420,6 +422,8 @@ class CartillaServiceTest {
         assertThat(resultado).hasSize(2);
         assertThat(resultado.get(0).nombre()).isEqualTo("B");
         assertThat(resultado.get(1).nombre()).isEqualTo("A");
+        assertThat(resultado).extracting(CartillaResponseDTO::creadorId)
+                .containsExactly(terapeutaId, terapeutaId);
     }
 
     // ──────────────────────────────────────────────
@@ -434,6 +438,7 @@ class CartillaServiceTest {
         Cartilla cartilla = Cartilla.builder()
                 .id(cartillaId)
                 .paciente(paciente)
+                .creador(terapeuta)
                 .nombre("Cartilla A")
                 .esPrincipal(true)
                 .build();
@@ -488,6 +493,7 @@ class CartillaServiceTest {
 
         assertThat(detalle).isNotNull();
         assertThat(detalle.id()).isEqualTo(cartillaId);
+        assertThat(detalle.creadorId()).isEqualTo(terapeutaId);
         assertThat(detalle.nombre()).isEqualTo("Cartilla A");
         assertThat(detalle.esPrincipal()).isTrue();
 
@@ -517,6 +523,7 @@ class CartillaServiceTest {
         Cartilla cartilla = Cartilla.builder()
                 .id(cartillaId)
                 .paciente(paciente)
+                .creador(terapeuta)
                 .nombre("Cartilla A")
                 .esPrincipal(false)
                 .build();

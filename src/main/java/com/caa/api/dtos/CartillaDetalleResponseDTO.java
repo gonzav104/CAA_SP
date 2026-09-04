@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record CartillaDetalleResponseDTO(
         UUID id,
+        UUID creadorId,
         String nombre,
         Boolean esPrincipal,
         List<CategoriaDetalleResponseDTO> categorias

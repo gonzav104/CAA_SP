@@ -194,6 +194,7 @@ class CartillaOwnershipIntegrationTest {
                         .content("{\"nombre\": \"Tablero A\", \"esPrincipal\": true}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.nombre").value("Tablero A"))
+                .andExpect(jsonPath("$.creadorId").value(terapeuta.getId().toString()))
                 .andExpect(jsonPath("$.esPrincipal").value(true));
 
         var captor = org.mockito.ArgumentCaptor.forClass(Cartilla.class);
@@ -214,7 +215,8 @@ class CartillaOwnershipIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"nombre\": \"Tablero F\", \"esPrincipal\": false}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.nombre").value("Tablero F"));
+                .andExpect(jsonPath("$.nombre").value("Tablero F"))
+                .andExpect(jsonPath("$.creadorId").value(familiarEdicion.getId().toString()));
 
         var captor = org.mockito.ArgumentCaptor.forClass(Cartilla.class);
         verify(cartillaRepository).save(captor.capture());

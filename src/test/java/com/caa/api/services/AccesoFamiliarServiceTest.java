@@ -183,9 +183,10 @@ class AccesoFamiliarServiceTest {
         }
 
         @Test
-        @DisplayName("Familiar vinculado puede obtener las cartillas (GET)")
+        @DisplayName("Familiar vinculado puede obtener las cartillas (GET) con creadorId del creador")
         void familiarPuedeObtenerCartillas() {
-            Cartilla c = Cartilla.builder().id(UUID.randomUUID()).paciente(paciente).nombre("A").esPrincipal(true).build();
+            Cartilla c = Cartilla.builder().id(UUID.randomUUID()).paciente(paciente).creador(familiar)
+                    .nombre("A").esPrincipal(true).build();
             given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
             given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(familiar)))
                     .willReturn(paciente);
@@ -194,6 +195,7 @@ class AccesoFamiliarServiceTest {
             var resultado = cartillaService.obtenerCartillasDePaciente(pacienteId, "familiar@ejemplo.com");
 
             assertThat(resultado).hasSize(1);
+            assertThat(resultado.get(0).creadorId()).isEqualTo(familiar.getId());
             verify(pacienteService).pacienteLegibleParaUsuario(eq(pacienteId), eq(familiar));
         }
     }

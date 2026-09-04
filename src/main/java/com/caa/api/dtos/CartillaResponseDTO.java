@@ -6,6 +6,7 @@ import java.util.UUID;
 public record CartillaResponseDTO(
         UUID id,
         UUID pacienteId,
+        UUID creadorId,
         String nombre,
         Boolean esPrincipal,
         LocalDateTime creadoEn

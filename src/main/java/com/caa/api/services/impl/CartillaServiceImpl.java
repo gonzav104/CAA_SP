@@ -96,6 +96,7 @@ public class CartillaServiceImpl implements CartillaService {
 
         return new CartillaDetalleResponseDTO(
                 cartilla.getId(),
+                cartilla.getCreador().getId(),
                 cartilla.getNombre(),
                 cartilla.isEsPrincipal(),
                 categorias
@@ -141,6 +142,7 @@ public class CartillaServiceImpl implements CartillaService {
         return new CartillaResponseDTO(
                 c.getId(),
                 c.getPaciente().getId(),
+                c.getCreador().getId(),
                 c.getNombre(),
                 c.isEsPrincipal(),
                 c.getCreadoEn()
