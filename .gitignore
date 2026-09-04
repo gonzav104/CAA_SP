@@ -37,3 +37,6 @@ build/
 
 # Archivos de contexto y configuración de IA
 *.md
+
+# SDD infrastructure (skill registry, state)
+.atl/
