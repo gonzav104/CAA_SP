@@ -18,7 +18,6 @@ import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
-import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -37,7 +36,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class CartillaServiceImpl implements CartillaService {
 
     private final CartillaRepository cartillaRepository;
-    private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
     private final CategoriaRepository categoriaRepository;
     private final ItemCartillaRepository itemCartillaRepository;
@@ -48,14 +46,16 @@ public class CartillaServiceImpl implements CartillaService {
     @Override
     @Transactional
     public CartillaResponseDTO crearCartilla(UUID pacienteId, CartillaRegistroDTO dto, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        // Gate de rol: terapeuta dueño del paciente o familiar con EDICION_LIMITADA
+        pacienteService.verificarEdicionParaUsuario(pacienteId, usuario);
+        Paciente paciente = pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
 
         Cartilla cartilla = Cartilla.builder()
                 .paciente(paciente)
+                .creador(usuario)
                 .nombre(dto.nombre())
                 .esPrincipal(dto.esPrincipal() != null && dto.esPrincipal())
                 .build();
@@ -109,11 +109,10 @@ public class CartillaServiceImpl implements CartillaService {
         Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Permite terapeuta propietario y familiar con EDICION_LIMITADA (igual que Categoria/Item)
-        pacienteService.verificarEdicionParaUsuario(pacienteId, usuario);
-
-        Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
+        // Ownership por creador: solo quien creó ESTA cartilla puede modificarla
+        Cartilla cartilla = cartillaRepository
+                .findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         cartilla.setNombre(dto.nombre());
         if (dto.esPrincipal() != null) {
@@ -127,14 +126,13 @@ public class CartillaServiceImpl implements CartillaService {
     @Override
     @Transactional
     public void eliminarCartilla(UUID pacienteId, UUID cartillaId, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
+        // Ownership por creador: solo quien creó ESTA cartilla puede eliminarla
+        Cartilla cartilla = cartillaRepository
+                .findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
-
-        Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         cartillaRepository.delete(cartilla);
     }

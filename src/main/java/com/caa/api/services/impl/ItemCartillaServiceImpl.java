@@ -7,14 +7,12 @@ import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
-import com.caa.api.models.Paciente;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
-import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -33,7 +31,6 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     private final ItemCartillaRepository itemCartillaRepository;
     private final CategoriaRepository categoriaRepository;
     private final CartillaRepository cartillaRepository;
-    private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
     private final PictogramaGlobalRepository pictogramaGlobalRepository;
     private final PictogramaCustomRepository pictogramaCustomRepository;
@@ -43,14 +40,12 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     @Transactional
     public ItemCartillaResponseDTO crearItem(UUID pacienteId, UUID cartillaId, UUID categoriaId,
                                              ItemCartillaRegistroDTO dto, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
+        // Ownership por creador: solo quien creó la cartilla puede agregarle items
+        cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
-
-        Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         Categoria categoria = categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));
@@ -101,10 +96,9 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteService.verificarEdicionParaUsuario(pacienteId, usuario);
-
-        cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
+        // Ownership por creador: solo quien creó la cartilla puede modificar sus items
+        cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));
@@ -128,14 +122,12 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     @Override
     @Transactional
     public void eliminarItem(UUID pacienteId, UUID cartillaId, UUID categoriaId, UUID itemId, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Terapeuta no encontrado"));
+        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
+        // Ownership por creador: solo quien creó la cartilla puede eliminar sus items
+        cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
-
-        cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));

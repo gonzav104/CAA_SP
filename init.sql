@@ -86,11 +86,14 @@ CREATE TABLE pictogramas_custom (
 CREATE TABLE cartillas (
                            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                            paciente_id UUID NOT NULL,
+                           creador_id UUID NOT NULL,
                            nombre VARCHAR(100) NOT NULL,
                            es_principal BOOLEAN NOT NULL DEFAULT FALSE,
                            creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                            CONSTRAINT fk_cartilla_paciente FOREIGN KEY (paciente_id)
-                               REFERENCES pacientes(id) ON DELETE CASCADE
+                               REFERENCES pacientes(id) ON DELETE CASCADE,
+                           CONSTRAINT fk_cartilla_creador FOREIGN KEY (creador_id)
+                               REFERENCES usuarios(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE categorias (
@@ -130,7 +133,42 @@ CREATE TABLE items_cartilla (
 -- ========================================================
 CREATE INDEX idx_pacientes_terapeuta ON pacientes(terapeuta_id);
 CREATE INDEX idx_cartillas_paciente ON cartillas(paciente_id);
+CREATE INDEX idx_cartillas_creador ON cartillas(creador_id);
 CREATE INDEX idx_categorias_cartilla ON categorias(cartilla_id);
 CREATE INDEX idx_items_categoria ON items_cartilla(categoria_id);
 CREATE INDEX idx_pictogramas_custom_paciente ON pictogramas_custom(paciente_id);
 CREATE INDEX idx_sesiones_paciente ON sesiones(paciente_id);
+
+-- ========================================================
+-- MIGRACIÓN 002 — cartillas.creador_id (ownership por creador)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 001.
+-- Las cartillas existentes quedan a nombre de su terapeuta dueño.
+-- ========================================================
+
+-- 1. Columna nullable primero (la base ya tiene filas)
+ALTER TABLE cartillas ADD COLUMN IF NOT EXISTS creador_id UUID;
+
+-- 2. Backfill: toda cartilla existente queda a nombre de su terapeuta dueño
+UPDATE cartillas c
+SET creador_id = p.terapeuta_id
+FROM pacientes p
+WHERE c.paciente_id = p.id
+  AND c.creador_id IS NULL;
+
+-- 3. Bloquear creación sin creador
+ALTER TABLE cartillas ALTER COLUMN creador_id SET NOT NULL;
+
+-- 4. FK con guarda (PostgreSQL NO tiene ADD CONSTRAINT IF NOT EXISTS)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_cartilla_creador'
+    ) THEN
+        ALTER TABLE cartillas
+            ADD CONSTRAINT fk_cartilla_creador
+            FOREIGN KEY (creador_id) REFERENCES usuarios(id) ON DELETE RESTRICT;
+    END IF;
+END $$;
+
+-- 5. Índice para el look-up de ownership (findByIdAndPacienteIdAndCreadorId)
+CREATE INDEX IF NOT EXISTS idx_cartillas_creador ON cartillas(creador_id);

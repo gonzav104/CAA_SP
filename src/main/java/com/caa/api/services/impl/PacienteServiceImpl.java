@@ -144,7 +144,7 @@ public class PacienteServiceImpl implements PacienteService {
             return pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, usuario.getId())
                     .map(PacienteFamiliar::getPaciente)
                     .orElseThrow(() -> new RecursoNoEncontradoException(
-                            "No tiene acceso a este paciente"));
+                            "Paciente no encontrado o no tiene permisos"));
         }
         throw new RecursoNoEncontradoException("Rol desconocido");
     }
@@ -157,10 +157,10 @@ public class PacienteServiceImpl implements PacienteService {
             PermisoColaborador permiso = pacienteFamiliarRepository
                     .findByPaciente_IdAndUsuario_Id(pacienteId, usuario.getId())
                     .map(PacienteFamiliar::getPermiso)
-                    .orElseThrow(() -> new RecursoNoEncontradoException("No tiene acceso a este paciente"));
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
             if (permiso != PermisoColaborador.EDICION_LIMITADA) {
                 throw new RecursoNoEncontradoException(
-                        "No tiene permisos de edición sobre este paciente");
+                        "Paciente no encontrado o no tiene permisos");
             }
         } else {
             throw new RecursoNoEncontradoException("Rol desconocido");

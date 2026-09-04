@@ -43,6 +43,16 @@ public class Cartilla {
     )
     private Paciente paciente;
 
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "creador_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_cartilla_creador")
+    )
+    private Usuario creador;
+
     @Column(name = "nombre", nullable = false, length = 100)
     private String nombre;
 

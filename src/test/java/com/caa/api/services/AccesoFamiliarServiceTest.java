@@ -126,7 +126,7 @@ class AccesoFamiliarServiceTest {
 
             assertThatThrownBy(() -> pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar))
                     .isInstanceOf(RecursoNoEncontradoException.class)
-                    .hasMessageContaining("No tiene acceso");
+                    .hasMessageContaining("no tiene permisos");
         }
 
         @Test
@@ -142,7 +142,7 @@ class AccesoFamiliarServiceTest {
             // Edita: lanza
             assertThatThrownBy(() -> pacienteService.verificarEdicionParaUsuario(pacienteId, familiar))
                     .isInstanceOf(RecursoNoEncontradoException.class)
-                    .hasMessageContaining("No tiene permisos de edición");
+                    .hasMessageContaining("no tiene permisos");
         }
 
         @Test
@@ -166,7 +166,6 @@ class AccesoFamiliarServiceTest {
     class CartillaLecturaTest {
 
         @Mock CartillaRepository cartillaRepository;
-        @Mock PacienteRepository pacienteRepository;
         @Mock UsuarioRepository usuarioRepository;
         @Mock PacienteService pacienteService;
 
@@ -210,7 +209,6 @@ class AccesoFamiliarServiceTest {
 
         @Mock CategoriaRepository categoriaRepository;
         @Mock CartillaRepository cartillaRepository;
-        @Mock PacienteRepository pacienteRepository;
         @Mock UsuarioRepository usuarioRepository;
         @Mock PacienteService pacienteService;
 
@@ -235,12 +233,13 @@ class AccesoFamiliarServiceTest {
         }
 
         @Test
-        @DisplayName("Familiar con EDICION_LIMITADA puede PUT la categoría")
-        void familiarEdicionPuedeActualizarCategoria() {
+        @DisplayName("Familiar CREADOR de la cartilla puede PUT la categoría")
+        void familiarCreadorPuedeActualizarCategoria() {
             Usuario familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
             given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-            // verificarEdicionParaUsuario es void: no lanza en el mock → se procede
-            given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
+            // El familiar creó esta cartilla → el look-up de creador procede
+            given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiar.getId()))
+                    .willReturn(Optional.of(cartilla));
             given(categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId))
                     .willReturn(Optional.of(categoria));
             given(categoriaRepository.save(any(Categoria.class))).willReturn(categoria);
@@ -249,23 +248,20 @@ class AccesoFamiliarServiceTest {
             var response = categoriaService.actualizarCategoria(pacienteId, cartillaId, categoriaId, dto, "familiar@ejemplo.com");
 
             assertThat(response.nombre()).isEqualTo("Nuevo");
-            verify(pacienteService).verificarEdicionParaUsuario(eq(pacienteId), eq(familiar));
         }
 
         @Test
-        @DisplayName("Familiar NO puede eliminar la categoría (enruta por terapeuta → sin paciente propio → 404)")
-        void familiarNoPuedeEliminarCategoria() {
+        @DisplayName("Familiar que NO creó la cartilla no puede eliminar la categoría (404 genérico)")
+        void familiarNoCreadorNoPuedeEliminarCategoria() {
             Usuario familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
             given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-            // DELETE sigue validando contra findByIdAndTerapeutaId con el id del familiar → vacío → 404
-            given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+            given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiar.getId()))
                     .willReturn(Optional.empty());
 
             assertThatThrownBy(() ->
                     categoriaService.eliminarCategoria(pacienteId, cartillaId, categoriaId, "familiar@ejemplo.com"))
                     .isInstanceOf(RecursoNoEncontradoException.class);
 
-            verify(pacienteService, never()).verificarEdicionParaUsuario(any(), any());
             verify(categoriaRepository, never()).delete(any());
         }
     }
@@ -282,7 +278,6 @@ class AccesoFamiliarServiceTest {
         @Mock ItemCartillaRepository itemCartillaRepository;
         @Mock CategoriaRepository categoriaRepository;
         @Mock CartillaRepository cartillaRepository;
-        @Mock PacienteRepository pacienteRepository;
         @Mock UsuarioRepository usuarioRepository;
         @Mock PictogramaGlobalRepository pictogramaGlobalRepository;
         @Mock PictogramaCustomRepository pictogramaCustomRepository;
@@ -308,14 +303,15 @@ class AccesoFamiliarServiceTest {
         }
 
         @Test
-        @DisplayName("Familiar con EDICION_LIMITADA puede PUT el item")
-        void familiarEdicionPuedeActualizarItem() {
+        @DisplayName("Familiar CREADOR de la cartilla puede PUT el item")
+        void familiarCreadorPuedeActualizarItem() {
             Usuario familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
             UUID globalId = UUID.randomUUID();
             PictogramaGlobal global = PictogramaGlobal.builder().id(globalId).etiqueta("Saludo").build();
 
             given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-            given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
+            // El familiar creó esta cartilla → el look-up de creador procede
+            given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiar.getId()))
                     .willReturn(Optional.of(Cartilla.builder().id(cartillaId)
                             .paciente(Paciente.builder().id(pacienteId).build()).build()));
             given(categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId))
@@ -333,22 +329,20 @@ class AccesoFamiliarServiceTest {
                     pacienteId, cartillaId, categoriaId, itemId, dto, "familiar@ejemplo.com");
 
             assertThat(response.textoHablado()).isEqualTo("Hola");
-            verify(pacienteService).verificarEdicionParaUsuario(eq(pacienteId), eq(familiar));
         }
 
         @Test
-        @DisplayName("Familiar NO puede eliminar el item (solo terapeuta)")
-        void familiarNoPuedeEliminarItem() {
+        @DisplayName("Familiar que NO creó la cartilla no puede eliminar el item (404 genérico)")
+        void familiarNoCreadorNoPuedeEliminarItem() {
             Usuario familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
             given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-            given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+            given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiar.getId()))
                     .willReturn(Optional.empty());
 
             assertThatThrownBy(() ->
                     itemCartillaService.eliminarItem(pacienteId, cartillaId, categoriaId, itemId, "familiar@ejemplo.com"))
                     .isInstanceOf(RecursoNoEncontradoException.class);
 
-            verify(pacienteService, never()).verificarEdicionParaUsuario(any(), any());
             verify(itemCartillaRepository, never()).delete(any());
         }
     }

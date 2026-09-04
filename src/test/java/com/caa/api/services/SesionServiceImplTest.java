@@ -26,8 +26,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SesionServiceImpl — Tests unitarios")
@@ -36,7 +37,6 @@ class SesionServiceImplTest {
     @Mock private SesionRepository sesionRepository;
     @Mock private PacienteRepository pacienteRepository;
     @Mock private UsuarioRepository usuarioRepository;
-    @Mock private PacienteService pacienteService;
 
     @InjectMocks private SesionServiceImpl sesionService;
 
@@ -69,7 +69,7 @@ class SesionServiceImplTest {
     }
 
     // ──────────────────────────────────────────────
-    //  OBTENER SESIONES (lectura)
+    //  OBTENER SESIONES (lectura terapeuta-only)
     // ──────────────────────────────────────────────
 
     @Test
@@ -79,7 +79,8 @@ class SesionServiceImplTest {
         Sesion s2 = sesionPrueba(LocalDateTime.of(2026, 8, 30, 15, 30), "Objetivo B");
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, terapeuta)).willReturn(paciente);
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
         given(sesionRepository.findByPacienteId(pacienteId)).willReturn(List.of(s1, s2));
 
         List<SesionResponseDTO> resultado = sesionService.obtenerSesionesDePaciente(pacienteId, "test@ejemplo.com");
@@ -92,46 +93,47 @@ class SesionServiceImplTest {
     }
 
     @Test
-    @DisplayName("Familiar asignado al paciente → obtiene las sesiones (solo lectura)")
-    void obtener_familiarAsignado_obtieneSesiones() {
+    @DisplayName("Familiar asignado al paciente → NO obtiene las sesiones (terapeuta-only, 404)")
+    void obtener_familiar_lanzaExcepcion() {
         UUID familiarId = UUID.randomUUID();
         Usuario familiar = Usuario.builder()
                 .id(familiarId)
                 .email("familiar@ejemplo.com")
                 .rol(RolUsuario.FAMILIAR)
                 .build();
-        Sesion s1 = sesionPrueba(LocalDateTime.of(2026, 9, 1, 10, 0), "Objetivo A");
 
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar)).willReturn(paciente);
-        given(sesionRepository.findByPacienteId(pacienteId)).willReturn(List.of(s1));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiarId))
+                .willReturn(Optional.empty());
 
-        List<SesionResponseDTO> resultado = sesionService.obtenerSesionesDePaciente(pacienteId, "familiar@ejemplo.com");
+        assertThatThrownBy(() ->
+                sesionService.obtenerSesionesDePaciente(pacienteId, "familiar@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
 
-        assertThat(resultado).hasSize(1);
-        assertThat(resultado.get(0).objetivosTrabajados()).isEqualTo("Objetivo A");
+        verify(sesionRepository, never()).findByPacienteId(any());
     }
 
     @Test
-    @DisplayName("Usuario sin acceso al paciente → lanza 404 (excepción del dominio)")
-    void obtener_usuarioSinAcceso_lanzaExcepcion() {
-        UUID otroUsuarioId = UUID.randomUUID();
-        Usuario ajeno = Usuario.builder()
-                .id(otroUsuarioId)
-                .email("ajeno@ejemplo.com")
-                .rol(RolUsuario.FAMILIAR)
+    @DisplayName("Terapeuta de OTRO paciente → no obtiene sesiones (404 genérico)")
+    void obtener_terapeutaDeOtroPaciente_lanzaExcepcion() {
+        UUID otroTerapeutaId = UUID.randomUUID();
+        Usuario otroTerapeuta = Usuario.builder()
+                .id(otroTerapeutaId)
+                .email("otro@ejemplo.com")
+                .rol(RolUsuario.TERAPEUTA)
                 .build();
 
-        given(usuarioRepository.findByEmail("ajeno@ejemplo.com")).willReturn(Optional.of(ajeno));
-        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, ajeno))
-                .willThrow(new RecursoNoEncontradoException("No tiene acceso a este paciente"));
+        given(usuarioRepository.findByEmail("otro@ejemplo.com")).willReturn(Optional.of(otroTerapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, otroTerapeutaId))
+                .willReturn(Optional.empty());
 
         assertThatThrownBy(() ->
-                sesionService.obtenerSesionesDePaciente(pacienteId, "ajeno@ejemplo.com"))
+                sesionService.obtenerSesionesDePaciente(pacienteId, "otro@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("No tiene acceso");
+                .hasMessageContaining("no tiene permisos");
 
-        org.mockito.Mockito.verify(sesionRepository, org.mockito.Mockito.never()).findByPacienteId(any());
+        verify(sesionRepository, never()).findByPacienteId(any());
     }
 
     @Test
@@ -207,6 +209,6 @@ class SesionServiceImplTest {
                 .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("no tiene permisos");
 
-        org.mockito.Mockito.verify(sesionRepository, org.mockito.Mockito.never()).save(any());
+        verify(sesionRepository, never()).save(any());
     }
 }

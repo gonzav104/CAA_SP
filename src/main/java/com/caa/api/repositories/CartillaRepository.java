@@ -13,5 +13,7 @@ public interface CartillaRepository extends JpaRepository<Cartilla, UUID> {
 
     Optional<Cartilla> findByIdAndPacienteId(UUID id, UUID pacienteId);
 
+    Optional<Cartilla> findByIdAndPacienteIdAndCreadorId(UUID id, UUID pacienteId, UUID creadorId);
+
     Optional<Cartilla> findByPaciente_IdAndEsPrincipalTrue(UUID pacienteId);
 }

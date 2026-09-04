@@ -18,7 +18,6 @@ import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
-import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -30,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -39,13 +39,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willDoNothing;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("CartillaService — Tests unitarios")
 class CartillaServiceTest {
 
     @Mock private CartillaRepository cartillaRepository;
-    @Mock private PacienteRepository pacienteRepository;
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private CategoriaRepository categoriaRepository;
     @Mock private ItemCartillaRepository itemCartillaRepository;
@@ -72,74 +75,131 @@ class CartillaServiceTest {
         paciente = Paciente.builder().id(pacienteId).terapeuta(terapeuta).build();
     }
 
+    // ──────────────────────────────────────────────
+    //  CREAR (gate de rol: verificarEdicionParaUsuario)
+    // ──────────────────────────────────────────────
+
     @Test
-    @DisplayName("Crear cartilla sobre paciente ajeno al terapeuta → lanza excepción (ownership)")
-    void crear_pacienteAjeno_lanzaExcepcion() {
+    @DisplayName("Crear cartilla: terapeuta dueño → gate OK y queda con creador = terapeuta")
+    void crear_terapeuta_asignaCreador() {
+        Cartilla cartilla = Cartilla.builder()
+                .id(UUID.randomUUID())
+                .paciente(paciente)
+                .creador(terapeuta)
+                .nombre("Cartilla A")
+                .esPrincipal(true)
+                .build();
+
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
-                .willReturn(Optional.empty());
+        willDoNothing().given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartilla);
 
-        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false);
+        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", true);
+        CartillaResponseDTO response = cartillaService.crearCartilla(pacienteId, dto, "test@ejemplo.com");
 
-        assertThatThrownBy(() -> cartillaService.crearCartilla(pacienteId, dto, "test@ejemplo.com"))
-                .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("no tiene permisos");
+        assertThat(response.nombre()).isEqualTo("Cartilla A");
+        assertThat(response.pacienteId()).isEqualTo(pacienteId);
+        assertThat(response.esPrincipal()).isTrue();
 
-        org.mockito.Mockito.verify(cartillaRepository, org.mockito.Mockito.never()).save(any());
+        ArgumentCaptor<Cartilla> captor = ArgumentCaptor.forClass(Cartilla.class);
+        verify(cartillaRepository).save(captor.capture());
+        assertThat(captor.getValue().getCreador()).isSameAs(terapeuta);
     }
 
     @Test
-    @DisplayName("Terapeuta inexistente → lanza excepción")
-    void crear_terapeutaInexistente_lanzaExcepcion() {
+    @DisplayName("Crear cartilla: familiar con EDICION_LIMITADA → queda con creador = familiar")
+    void crear_familiarEdicionLimitada_asignaCreador() {
+        UUID familiarId = UUID.randomUUID();
+        Usuario familiar = Usuario.builder()
+                .id(familiarId)
+                .email("familiar@ejemplo.com")
+                .rol(RolUsuario.FAMILIAR)
+                .build();
+        Cartilla cartilla = Cartilla.builder()
+                .id(UUID.randomUUID())
+                .paciente(paciente)
+                .creador(familiar)
+                .nombre("Cartilla F")
+                .esPrincipal(false)
+                .build();
+
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+        willDoNothing().given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(familiar))).willReturn(paciente);
+        given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartilla);
+
+        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla F", false);
+        CartillaResponseDTO response = cartillaService.crearCartilla(pacienteId, dto, "familiar@ejemplo.com");
+
+        assertThat(response.nombre()).isEqualTo("Cartilla F");
+
+        ArgumentCaptor<Cartilla> captor = ArgumentCaptor.forClass(Cartilla.class);
+        verify(cartillaRepository).save(captor.capture());
+        assertThat(captor.getValue().getCreador()).isSameAs(familiar);
+    }
+
+    @Test
+    @DisplayName("Crear cartilla: familiar con LECTURA → 404 genérico (no encontrado o sin permisos)")
+    void crear_familiarLectura_lanzaExcepcion() {
+        UUID familiarId = UUID.randomUUID();
+        Usuario familiar = Usuario.builder()
+                .id(familiarId)
+                .email("familiar@ejemplo.com")
+                .rol(RolUsuario.FAMILIAR)
+                .build();
+
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+        willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"))
+                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
+
+        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false);
+
+        assertThatThrownBy(() -> cartillaService.crearCartilla(pacienteId, dto, "familiar@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
+
+        verify(cartillaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Usuario inexistente → lanza excepción")
+    void crear_usuarioInexistente_lanzaExcepcion() {
         given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
 
         CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false);
 
         assertThatThrownBy(() -> cartillaService.crearCartilla(pacienteId, dto, "nadie@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("Terapeuta no encontrado");
+                .hasMessageContaining("Usuario no encontrado");
     }
 
-    @Test
-    @DisplayName("Actualizar cartilla que no pertenece al paciente → lanza excepción (ownership anidado)")
-    void actualizar_cartillaDeOtroPaciente_lanzaExcepcion() {
-        UUID cartillaId = UUID.randomUUID();
-
-        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        org.mockito.BDDMockito.willDoNothing()
-                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
-        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
-                .willReturn(Optional.empty());
-
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nuevo nombre", false);
-
-        assertThatThrownBy(() ->
-                cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
-                .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("no tiene permisos");
-    }
+    // ──────────────────────────────────────────────
+    //  ACTUALIZAR (gate: creador-lookup único)
+    // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Terapeuta propietario → puede actualizar la cartilla")
-    void actualizar_terapeutaPropietario_puedeActualizar() {
+    @DisplayName("Creador → puede actualizar su cartilla")
+    void actualizar_creador_puedeActualizar() {
         UUID cartillaId = UUID.randomUUID();
         Cartilla cartilla = Cartilla.builder()
                 .id(cartillaId)
                 .paciente(paciente)
+                .creador(terapeuta)
                 .nombre("Nombre viejo")
                 .esPrincipal(false)
                 .build();
         Cartilla cartillaActualizada = Cartilla.builder()
                 .id(cartillaId)
                 .paciente(paciente)
+                .creador(terapeuta)
                 .nombre("Nombre nuevo")
                 .esPrincipal(true)
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        org.mockito.BDDMockito.willDoNothing()
-                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
-        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+                .willReturn(Optional.of(cartilla));
         given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartillaActualizada);
 
         CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", true);
@@ -151,8 +211,27 @@ class CartillaServiceTest {
     }
 
     @Test
-    @DisplayName("Familiar con EDICION_LIMITADA → puede actualizar la cartilla")
-    void actualizar_familiarEdicionLimitada_puedeActualizar() {
+    @DisplayName("Actualizar cartilla que no pertenece al paciente → lanza excepción (ownership anidado)")
+    void actualizar_cartillaDeOtroPaciente_lanzaExcepcion() {
+        UUID cartillaId = UUID.randomUUID();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+                .willReturn(Optional.empty());
+
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nuevo nombre", false);
+
+        assertThatThrownBy(() ->
+                cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
+
+        verify(cartillaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Familiar con EDICION_LIMITADA que NO es creador → 404 genérico (regresión revertida)")
+    void actualizar_familiarNoCreador_lanzaExcepcion() {
         UUID familiarId = UUID.randomUUID();
         UUID cartillaId = UUID.randomUUID();
         Usuario familiar = Usuario.builder()
@@ -160,35 +239,23 @@ class CartillaServiceTest {
                 .email("familiar@ejemplo.com")
                 .rol(RolUsuario.FAMILIAR)
                 .build();
-        Cartilla cartilla = Cartilla.builder()
-                .id(cartillaId)
-                .paciente(paciente)
-                .nombre("Nombre viejo")
-                .esPrincipal(false)
-                .build();
-        Cartilla cartillaActualizada = Cartilla.builder()
-                .id(cartillaId)
-                .paciente(paciente)
-                .nombre("Nombre nuevo")
-                .esPrincipal(false)
-                .build();
 
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-        org.mockito.BDDMockito.willDoNothing()
-                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
-        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
-        given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartillaActualizada);
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiarId))
+                .willReturn(Optional.empty());
 
         CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
 
-        CartillaResponseDTO response = cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "familiar@ejemplo.com");
+        assertThatThrownBy(() ->
+                cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "familiar@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
 
-        assertThat(response.nombre()).isEqualTo("Nombre nuevo");
-        org.mockito.Mockito.verify(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
+        verify(cartillaRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Familiar con LECTURA → NO puede actualizar la cartilla")
+    @DisplayName("Familiar con LECTURA → NO puede actualizar la cartilla (404 genérico)")
     void actualizar_familiarLectura_lanzaExcepcion() {
         UUID familiarId = UUID.randomUUID();
         UUID cartillaId = UUID.randomUUID();
@@ -199,29 +266,27 @@ class CartillaServiceTest {
                 .build();
 
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-        org.mockito.BDDMockito.willThrow(new RecursoNoEncontradoException(
-                        "No tiene permisos de edición sobre este paciente"))
-                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiarId))
+                .willReturn(Optional.empty());
 
         CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
 
         assertThatThrownBy(() ->
                 cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "familiar@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("No tiene permisos de edición");
+                .hasMessageContaining("no tiene permisos");
 
-        org.mockito.Mockito.verify(cartillaRepository, org.mockito.Mockito.never()).save(any());
+        verify(cartillaRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Terapeuta de OTRO paciente → NO puede actualizar la cartilla")
+    @DisplayName("Terapeuta de OTRO paciente → NO puede actualizar la cartilla (404 genérico)")
     void actualizar_terapeutaOtroPaciente_lanzaExcepcion() {
         UUID cartillaId = UUID.randomUUID();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        org.mockito.BDDMockito.willThrow(new RecursoNoEncontradoException(
-                        "Paciente no encontrado o no tiene permisos"))
-                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+                .willReturn(Optional.empty());
 
         CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
 
@@ -230,36 +295,118 @@ class CartillaServiceTest {
                 .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("no tiene permisos");
 
-        org.mockito.Mockito.verify(cartillaRepository, org.mockito.Mockito.never()).save(any());
+        verify(cartillaRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Crear cartilla correcto → devuelve DTO con pacienteId")
-    void crear_correcto_devuelveDTO() {
-        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", true);
+    @DisplayName("Terapeuta en cartilla de un familiar → NO puede actualizarla (404 genérico)")
+    void actualizar_terapeutaEnCartillaDeFamiliar_lanzaExcepcion() {
+        UUID cartillaId = UUID.randomUUID();
 
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+                .willReturn(Optional.empty());
+
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
+
+        assertThatThrownBy(() ->
+                cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
+
+        verify(cartillaRepository, never()).save(any());
+    }
+
+    // ──────────────────────────────────────────────
+    //  ELIMINAR (gate: creador-lookup único)
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Creador → puede eliminar su cartilla")
+    void eliminar_creador_puedeEliminar() {
+        UUID cartillaId = UUID.randomUUID();
         Cartilla cartilla = Cartilla.builder()
-                .id(UUID.randomUUID())
+                .id(cartillaId)
                 .paciente(paciente)
+                .creador(terapeuta)
                 .nombre("Cartilla A")
-                .esPrincipal(true)
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
-                .willReturn(Optional.of(paciente));
-        given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartilla);
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+                .willReturn(Optional.of(cartilla));
 
-        CartillaResponseDTO response = cartillaService.crearCartilla(pacienteId, dto, "test@ejemplo.com");
+        cartillaService.eliminarCartilla(pacienteId, cartillaId, "test@ejemplo.com");
 
-        assertThat(response).isNotNull();
-        assertThat(response.nombre()).isEqualTo("Cartilla A");
-        assertThat(response.pacienteId()).isEqualTo(pacienteId);
-        assertThat(response.esPrincipal()).isTrue();
+        verify(cartillaRepository).delete(cartilla);
     }
 
     @Test
-    @DisplayName("Obtener cartillas de paciente propio → devuelve lista ordenada")
+    @DisplayName("No-creador → NO puede eliminar la cartilla (404 genérico)")
+    void eliminar_noCreador_lanzaExcepcion() {
+        UUID familiarId = UUID.randomUUID();
+        UUID cartillaId = UUID.randomUUID();
+        Usuario familiar = Usuario.builder()
+                .id(familiarId)
+                .email("familiar@ejemplo.com")
+                .rol(RolUsuario.FAMILIAR)
+                .build();
+
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiarId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                cartillaService.eliminarCartilla(pacienteId, cartillaId, "familiar@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+
+        verify(cartillaRepository, never()).delete(any());
+    }
+
+    // ──────────────────────────────────────────────
+    //  esPrincipal libre (sin unicidad)
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Dos creadores distintos marcan su cartilla como principal → ambos OK (sin unicidad)")
+    void dosCreadores_esPrincipalTrue_ambosOK() {
+        UUID cartillaA = UUID.randomUUID();
+        UUID cartillaB = UUID.randomUUID();
+        UUID creadorAId = UUID.randomUUID();
+        UUID creadorBId = UUID.randomUUID();
+        Usuario creadorA = Usuario.builder()
+                .id(creadorAId).email("creadorA@ejemplo.com").rol(RolUsuario.TERAPEUTA).build();
+        Usuario creadorB = Usuario.builder()
+                .id(creadorBId).email("creadorB@ejemplo.com").rol(RolUsuario.TERAPEUTA).build();
+        Cartilla cartillaDeA = Cartilla.builder()
+                .id(cartillaA).paciente(paciente).creador(creadorA).nombre("A").esPrincipal(false).build();
+        Cartilla cartillaDeB = Cartilla.builder()
+                .id(cartillaB).paciente(paciente).creador(creadorB).nombre("B").esPrincipal(false).build();
+
+        given(usuarioRepository.findByEmail("creadorA@ejemplo.com")).willReturn(Optional.of(creadorA));
+        given(usuarioRepository.findByEmail("creadorB@ejemplo.com")).willReturn(Optional.of(creadorB));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaA, pacienteId, creadorAId))
+                .willReturn(Optional.of(cartillaDeA));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaB, pacienteId, creadorBId))
+                .willReturn(Optional.of(cartillaDeB));
+        given(cartillaRepository.save(cartillaDeA)).willReturn(cartillaDeA);
+        given(cartillaRepository.save(cartillaDeB)).willReturn(cartillaDeB);
+
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Principal", true);
+
+        CartillaResponseDTO r1 = cartillaService.actualizarCartilla(pacienteId, cartillaA, dto, "creadorA@ejemplo.com");
+        CartillaResponseDTO r2 = cartillaService.actualizarCartilla(pacienteId, cartillaB, dto, "creadorB@ejemplo.com");
+
+        assertThat(r1.esPrincipal()).isTrue();
+        assertThat(r2.esPrincipal()).isTrue();
+    }
+
+    // ──────────────────────────────────────────────
+    //  LECTURA (sin cambios: abierta a cualquier lector)
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Obtener cartillas de paciente legible → devuelve lista ordenada")
     void obtener_correcto_devuelveLista() {
         Cartilla c1 = Cartilla.builder().id(UUID.randomUUID()).paciente(paciente).nombre("B").esPrincipal(false).build();
         Cartilla c2 = Cartilla.builder().id(UUID.randomUUID()).paciente(paciente).nombre("A").esPrincipal(true).build();
