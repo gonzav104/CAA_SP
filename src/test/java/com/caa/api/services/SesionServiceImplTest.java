@@ -1,5 +1,6 @@
 package com.caa.api.services;
 
+import com.caa.api.dtos.SesionActualizacionDTO;
 import com.caa.api.dtos.SesionRegistroDTO;
 import com.caa.api.dtos.SesionResponseDTO;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
@@ -229,5 +230,297 @@ class SesionServiceImplTest {
                 .hasMessageContaining("no tiene permisos");
 
         verify(sesionRepository, never()).save(any());
+    }
+
+    // ──────────────────────────────────────────────
+    //  OBTENER SESIÓN POR ID (lectura terapeuta-only)
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Terapeuta propietario → obtiene la sesión por id")
+    void obtenerSesion_terapeutaPropietario_obtieneSesion() {
+        UUID sesionId = UUID.randomUUID();
+        Sesion sesion = Sesion.builder()
+                .id(sesionId)
+                .paciente(paciente)
+                .fechaHora(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .objetivosTrabajados("Objetivo A")
+                .observaciones("Obs")
+                .estrategiasYProximosPasos("Sigue")
+                .build();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
+                .willReturn(Optional.of(sesion));
+
+        SesionResponseDTO resultado = sesionService.obtenerSesion(pacienteId, sesionId, "test@ejemplo.com");
+
+        assertThat(resultado.id()).isEqualTo(sesionId);
+        assertThat(resultado.objetivosTrabajados()).isEqualTo("Objetivo A");
+        assertThat(resultado.pacienteId()).isEqualTo(pacienteId);
+    }
+
+    @Test
+    @DisplayName("Sesión de OTRO paciente → no la obtiene (404 genérico)")
+    void obtenerSesion_sesionDeOtroPaciente_lanzaExcepcion() {
+        UUID sesionId = UUID.randomUUID();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                sesionService.obtenerSesion(pacienteId, sesionId, "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no encontrada o no tiene permisos");
+    }
+
+    @Test
+    @DisplayName("Terapeuta de OTRO paciente → no obtiene la sesión (404 genérico)")
+    void obtenerSesion_terapeutaDeOtroPaciente_lanzaExcepcion() {
+        UUID otroTerapeutaId = UUID.randomUUID();
+        Usuario otroTerapeuta = Usuario.builder()
+                .id(otroTerapeutaId)
+                .email("otro@ejemplo.com")
+                .rol(RolUsuario.TERAPEUTA)
+                .build();
+
+        given(usuarioRepository.findByEmail("otro@ejemplo.com")).willReturn(Optional.of(otroTerapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, otroTerapeutaId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                sesionService.obtenerSesion(pacienteId, UUID.randomUUID(), "otro@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
+
+        verify(sesionRepository, never()).findByIdAndPacienteId(any(), any());
+    }
+
+    @Test
+    @DisplayName("Sesión inexistente → lanza excepción (404 genérico)")
+    void obtenerSesion_sesionInexistente_lanzaExcepcion() {
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(any(), any()))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                sesionService.obtenerSesion(pacienteId, UUID.randomUUID(), "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no encontrada o no tiene permisos");
+    }
+
+    // ──────────────────────────────────────────────
+    //  ACTUALIZAR SESIÓN (solo terapeuta)
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Terapeuta propietario → actualiza la sesión")
+    void actualizarSesion_terapeutaPropietario_actualiza() {
+        UUID sesionId = UUID.randomUUID();
+        Sesion sesionExistente = Sesion.builder()
+                .id(sesionId)
+                .paciente(paciente)
+                .fechaHora(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .objetivosTrabajados("Antes")
+                .build();
+        SesionActualizacionDTO dto = new SesionActualizacionDTO(
+                LocalDateTime.of(2026, 9, 5, 11, 30),
+                "de pie",
+                "Después",
+                "Nueva obs",
+                "Nueva estrategia");
+        Sesion sesionActualizada = Sesion.builder()
+                .id(sesionId)
+                .paciente(paciente)
+                .fechaHora(dto.fechaHora())
+                .disposicion(dto.disposicion())
+                .objetivosTrabajados(dto.objetivosTrabajados())
+                .observaciones(dto.observaciones())
+                .estrategiasYProximosPasos(dto.estrategiasYProximosPasos())
+                .build();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
+                .willReturn(Optional.of(sesionExistente));
+        given(sesionRepository.save(any(Sesion.class))).willReturn(sesionActualizada);
+
+        SesionResponseDTO response = sesionService.actualizarSesion(pacienteId, sesionId, dto, "test@ejemplo.com");
+
+        assertThat(response.objetivosTrabajados()).isEqualTo("Después");
+        assertThat(response.fechaHora()).isEqualTo(dto.fechaHora());
+        assertThat(response.observaciones()).isEqualTo("Nueva obs");
+        verify(sesionRepository).save(sesionExistente);
+    }
+
+    @Test
+    @DisplayName("Sesión de OTRO paciente → no la actualiza (404 genérico)")
+    void actualizarSesion_sesionDeOtroPaciente_lanzaExcepcion() {
+        UUID sesionId = UUID.randomUUID();
+        SesionActualizacionDTO dto = new SesionActualizacionDTO(
+                LocalDateTime.of(2026, 9, 5, 11, 30),
+                null,
+                "Objetivo",
+                null,
+                null);
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                sesionService.actualizarSesion(pacienteId, sesionId, dto, "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no encontrada o no tiene permisos");
+
+        verify(sesionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Terapeuta de OTRO paciente → no actualiza la sesión (404 genérico)")
+    void actualizarSesion_terapeutaDeOtroPaciente_lanzaExcepcion() {
+        UUID otroTerapeutaId = UUID.randomUUID();
+        Usuario otroTerapeuta = Usuario.builder()
+                .id(otroTerapeutaId)
+                .email("otro@ejemplo.com")
+                .rol(RolUsuario.TERAPEUTA)
+                .build();
+        SesionActualizacionDTO dto = new SesionActualizacionDTO(
+                LocalDateTime.of(2026, 9, 5, 11, 30),
+                null,
+                "Objetivo",
+                null,
+                null);
+
+        given(usuarioRepository.findByEmail("otro@ejemplo.com")).willReturn(Optional.of(otroTerapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, otroTerapeutaId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                sesionService.actualizarSesion(pacienteId, UUID.randomUUID(), dto, "otro@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
+
+        verify(sesionRepository, never()).findByIdAndPacienteId(any(), any());
+        verify(sesionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Sesión inexistente → no la actualiza (404 genérico)")
+    void actualizarSesion_sesionInexistente_lanzaExcepcion() {
+        SesionActualizacionDTO dto = new SesionActualizacionDTO(
+                LocalDateTime.of(2026, 9, 5, 11, 30),
+                null,
+                "Objetivo",
+                null,
+                null);
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(any(), any()))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                sesionService.actualizarSesion(pacienteId, UUID.randomUUID(), dto, "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no encontrada o no tiene permisos");
+
+        verify(sesionRepository, never()).save(any());
+    }
+
+    // ──────────────────────────────────────────────
+    //  ELIMINAR SESIÓN (solo terapeuta)
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Terapeuta propietario → elimina la sesión")
+    void eliminarSesion_terapeutaPropietario_elimina() {
+        UUID sesionId = UUID.randomUUID();
+        Sesion sesion = Sesion.builder()
+                .id(sesionId)
+                .paciente(paciente)
+                .fechaHora(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .objetivosTrabajados("Objetivo A")
+                .build();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
+                .willReturn(Optional.of(sesion));
+
+        sesionService.eliminarSesion(pacienteId, sesionId, "test@ejemplo.com");
+
+        verify(sesionRepository).delete(sesion);
+    }
+
+    @Test
+    @DisplayName("Sesión de OTRO paciente → no la elimina (404 genérico)")
+    void eliminarSesion_sesionDeOtroPaciente_lanzaExcepcion() {
+        UUID sesionId = UUID.randomUUID();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                sesionService.eliminarSesion(pacienteId, sesionId, "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no encontrada o no tiene permisos");
+
+        verify(sesionRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("Terapeuta de OTRO paciente → no elimina la sesión (404 genérico)")
+    void eliminarSesion_terapeutaDeOtroPaciente_lanzaExcepcion() {
+        UUID otroTerapeutaId = UUID.randomUUID();
+        Usuario otroTerapeuta = Usuario.builder()
+                .id(otroTerapeutaId)
+                .email("otro@ejemplo.com")
+                .rol(RolUsuario.TERAPEUTA)
+                .build();
+
+        given(usuarioRepository.findByEmail("otro@ejemplo.com")).willReturn(Optional.of(otroTerapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, otroTerapeutaId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                sesionService.eliminarSesion(pacienteId, UUID.randomUUID(), "otro@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
+
+        verify(sesionRepository, never()).findByIdAndPacienteId(any(), any());
+        verify(sesionRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("Sesión inexistente → no la elimina (404 genérico)")
+    void eliminarSesion_sesionInexistente_lanzaExcepcion() {
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(any(), any()))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                sesionService.eliminarSesion(pacienteId, UUID.randomUUID(), "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no encontrada o no tiene permisos");
+
+        verify(sesionRepository, never()).delete(any());
     }
 }

@@ -1,5 +1,6 @@
 package com.caa.api.controllers;
 
+import com.caa.api.dtos.SesionActualizacionDTO;
 import com.caa.api.dtos.SesionRegistroDTO;
 import com.caa.api.dtos.SesionResponseDTO;
 import com.caa.api.services.SesionService;
@@ -10,9 +11,11 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,5 +42,33 @@ public class SesionController {
             Principal principal) {
         List<SesionResponseDTO> sesiones = sesionService.obtenerSesionesDePaciente(pacienteId, principal.getName());
         return ResponseEntity.ok(sesiones);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<SesionResponseDTO> obtenerSesion(
+            @PathVariable UUID pacienteId,
+            @PathVariable UUID id,
+            Principal principal) {
+        SesionResponseDTO response = sesionService.obtenerSesion(pacienteId, id, principal.getName());
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<SesionResponseDTO> actualizarSesion(
+            @PathVariable UUID pacienteId,
+            @PathVariable UUID id,
+            @Valid @RequestBody SesionActualizacionDTO dto,
+            Principal principal) {
+        SesionResponseDTO response = sesionService.actualizarSesion(pacienteId, id, dto, principal.getName());
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> eliminarSesion(
+            @PathVariable UUID pacienteId,
+            @PathVariable UUID id,
+            Principal principal) {
+        sesionService.eliminarSesion(pacienteId, id, principal.getName());
+        return ResponseEntity.noContent().build();
     }
 }

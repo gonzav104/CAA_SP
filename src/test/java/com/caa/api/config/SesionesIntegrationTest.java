@@ -5,8 +5,10 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -217,5 +219,152 @@ class SesionesIntegrationTest {
     void getSesiones_sinToken_401() throws Exception {
         mockMvc.perform(get("/api/pacientes/{pacienteId}/sesiones", pacienteId))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ──────────────────────────────────────────────
+    //  SESIÓN INDIVIDUAL: GET por id, PUT, DELETE
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("GET sesión por id: terapeuta propietario → 200")
+    void getSesionPorId_terapeutaPropietario_200() throws Exception {
+        UUID sesionId = UUID.randomUUID();
+        Sesion sesion = Sesion.builder()
+                .id(sesionId)
+                .paciente(paciente)
+                .fechaHora(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .objetivosTrabajados("Objetivo A")
+                .observaciones("Obs")
+                .estrategiasYProximosPasos("Sigue")
+                .build();
+
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
+                .willReturn(Optional.of(sesion));
+
+        mockMvc.perform(get("/api/pacientes/{pacienteId}/sesiones/{id}", pacienteId, sesionId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(sesionId.toString()))
+                .andExpect(jsonPath("$.objetivosTrabajados").value("Objetivo A"))
+                .andExpect(jsonPath("$.pacienteId").value(pacienteId.toString()));
+    }
+
+    @Test
+    @DisplayName("GET sesión por id: familiar → 404, sin acceso (terapeuta-only)")
+    void getSesionPorId_familiar_404() throws Exception {
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+                .willReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/pacientes/{pacienteId}/sesiones/{id}", pacienteId, UUID.randomUUID())
+                        .header("Authorization", "Bearer " + tokenFamiliar))
+                .andExpect(status().isNotFound());
+
+        verify(sesionRepository, never()).findByIdAndPacienteId(any(), any());
+    }
+
+    @Test
+    @DisplayName("PUT sesión: terapeuta propietario → 200 con datos actualizados")
+    void putSesion_terapeutaPropietario_200() throws Exception {
+        UUID sesionId = UUID.randomUUID();
+        String body = """
+                {
+                  "fechaHora": "2026-09-05T11:30:00",
+                  "disposicion": "de pie",
+                  "objetivosTrabajados": "Objetivo actualizado",
+                  "observaciones": "Nueva obs",
+                  "estrategiasYProximosPasos": "Nueva estrategia"
+                }
+                """;
+
+        Sesion existente = Sesion.builder()
+                .id(sesionId)
+                .paciente(paciente)
+                .fechaHora(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .objetivosTrabajados("Objetivo A")
+                .build();
+        Sesion actualizada = Sesion.builder()
+                .id(sesionId)
+                .paciente(paciente)
+                .fechaHora(LocalDateTime.of(2026, 9, 5, 11, 30))
+                .disposicion("de pie")
+                .objetivosTrabajados("Objetivo actualizado")
+                .observaciones("Nueva obs")
+                .estrategiasYProximosPasos("Nueva estrategia")
+                .build();
+
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
+                .willReturn(Optional.of(existente));
+        given(sesionRepository.save(any(Sesion.class))).willReturn(actualizada);
+
+        mockMvc.perform(put("/api/pacientes/{pacienteId}/sesiones/{id}", pacienteId, sesionId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.objetivosTrabajados").value("Objetivo actualizado"))
+                .andExpect(jsonPath("$.fechaHora").value("2026-09-05T11:30:00"))
+                .andExpect(jsonPath("$.pacienteId").value(pacienteId.toString()));
+    }
+
+    @Test
+    @DisplayName("PUT sesión: familiar → 404, sin acceso (terapeuta-only)")
+    void putSesion_familiar_404() throws Exception {
+        String body = """
+                {
+                  "fechaHora": "2026-09-05T11:30:00",
+                  "objetivosTrabajados": "Objetivo"
+                }
+                """;
+
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+                .willReturn(Optional.empty());
+
+        mockMvc.perform(put("/api/pacientes/{pacienteId}/sesiones/{id}", pacienteId, UUID.randomUUID())
+                        .header("Authorization", "Bearer " + tokenFamiliar)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isNotFound());
+
+        verify(sesionRepository, never()).findByIdAndPacienteId(any(), any());
+        verify(sesionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("DELETE sesión: terapeuta propietario → 204")
+    void deleteSesion_terapeutaPropietario_204() throws Exception {
+        UUID sesionId = UUID.randomUUID();
+        Sesion sesion = Sesion.builder()
+                .id(sesionId)
+                .paciente(paciente)
+                .fechaHora(LocalDateTime.of(2026, 9, 1, 10, 0))
+                .objetivosTrabajados("Objetivo A")
+                .build();
+
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
+                .willReturn(Optional.of(paciente));
+        given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
+                .willReturn(Optional.of(sesion));
+
+        mockMvc.perform(delete("/api/pacientes/{pacienteId}/sesiones/{id}", pacienteId, sesionId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("DELETE sesión: familiar → 404, sin acceso (terapeuta-only)")
+    void deleteSesion_familiar_404() throws Exception {
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+                .willReturn(Optional.empty());
+
+        mockMvc.perform(delete("/api/pacientes/{pacienteId}/sesiones/{id}", pacienteId, UUID.randomUUID())
+                        .header("Authorization", "Bearer " + tokenFamiliar))
+                .andExpect(status().isNotFound());
+
+        verify(sesionRepository, never()).findByIdAndPacienteId(any(), any());
+        verify(sesionRepository, never()).delete(any());
     }
 }
