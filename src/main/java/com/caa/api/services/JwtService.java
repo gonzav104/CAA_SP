@@ -31,7 +31,8 @@ public class JwtService {
     /**
      * Genera un JWT firmado con HMAC (algoritmo elegido automáticamente según el largo del key:
      * HS256 si 256-383 bits, HS384 si 384-511 bits, HS512 si 512+ bits).
-     * Subject = email, claim "rol" = RolUsuario, issued = ahora, expiracion configurable.
+     * Subject = email, claim "rol" = RolUsuario, claim "tokenVersion" = versión actual del token
+     * del usuario (fallback 0 si es null — datos viejos), issued = ahora, expiracion configurable.
      */
     public String generarToken(Usuario usuario) {
         Date ahora = new Date();
@@ -40,6 +41,7 @@ public class JwtService {
         return Jwts.builder()
                 .subject(usuario.getEmail())
                 .claim("rol", usuario.getRol().name())
+                .claim("tokenVersion", tokenVersionDe(usuario))
                 .issuedAt(ahora)
                 .expiration(expiracion)
                 .signWith(signingKey)
@@ -47,17 +49,33 @@ public class JwtService {
     }
 
     /**
+     * Fallback defensivo: en datos viejos {@code tokenVersion} puede ser null
+     * → se trata como 0 (el valor con el que nacen todos los usuarios).
+     */
+    private int tokenVersionDe(Usuario usuario) {
+        return usuario.getTokenVersion() == null ? 0 : usuario.getTokenVersion();
+    }
+
+    /**
      * Valida la firma y expiracion del token, y devuelve el email (subject).
      * Lanza RuntimeException con mensaje claro si el token no es valido.
      */
     public String validarYObtenerEmail(String token) {
+        return obtenerClaimsValidados(token).getSubject();
+    }
+
+    /**
+     * Parsea y valida el token (firma + expiración), devolviendo los claims.
+     * Mismo criterio de errores que {@link #validarYObtenerEmail(String)}: lanza
+     * RuntimeException con mensaje claro si el token no es válido.
+     */
+    public Claims obtenerClaimsValidados(String token) {
         try {
-            Claims claims = Jwts.parser()
+            return Jwts.parser()
                     .verifyWith(signingKey)
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();
-            return claims.getSubject();
         } catch (SecurityException e) {
             throw new RuntimeException("Token con firma invalida", e);
         } catch (ExpiredJwtException e) {

@@ -4,7 +4,12 @@ import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.EmailService;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.HexFormat;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -40,7 +46,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "cloudinary.cloud-name=test-cloud",
         "cloudinary.api-key=test-api-key",
         "cloudinary.api-secret=test-api-secret",
-        "resend.api-key=test-resend-api-key"
+        "resend.api-key=test-resend-api-key",
+        // Este suite NO testea rate limit: deshabilitado para que el cupo en memoria
+        // no se acumule entre tests (los olvide-password repetidos con el mismo email).
+        "app.rate-limit.enabled=false"
 })
 @DisplayName("Recupero de contraseña — Tests de integración con MockMvc")
 @Transactional
@@ -101,9 +110,10 @@ class RecuperoPasswordIntegrationTest {
         String tokenEnviado = tokenCaptor.getValue();
         assertThat(tokenEnviado).isNotBlank();
 
-        // En BD se guarda el MISMO token plano que viaja por email.
+        // En BD se guarda SOLO el hash SHA-256 del token (el plano nunca se persiste)
         Usuario persistido = usuarioRepository.findById(usuario.getId()).orElseThrow();
-        assertThat(persistido.getResetToken()).isEqualTo(tokenEnviado);
+        assertThat(persistido.getResetToken()).isEqualTo(hashSha256(tokenEnviado));
+        assertThat(persistido.getResetToken()).isNotEqualTo(tokenEnviado);
         assertThat(persistido.getResetTokenExpira()).isAfter(LocalDateTime.now());
     }
 
@@ -148,10 +158,11 @@ class RecuperoPasswordIntegrationTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("restablecer-password con token VÁLIDO → cambia la contraseña y limpia el token")
+    @DisplayName("restablecer-password con token VÁLIDO → cambia la contraseña, limpia el token y sube tokenVersion")
     void restablecerPassword_tokenValido_cambiaPassword() throws Exception {
         String token = UUID.randomUUID().toString();
-        usuario.setResetToken(token);
+        // El token se guardó hasheado (así lo persiste olvide-password)
+        usuario.setResetToken(hashSha256(token));
         usuario.setResetTokenExpira(LocalDateTime.now().plusHours(1));
         usuarioRepository.save(usuario);
 
@@ -165,13 +176,15 @@ class RecuperoPasswordIntegrationTest {
         assertThat(passwordEncoder.matches("NuevaClave1!", persistido.getPasswordHash())).isTrue();
         assertThat(persistido.getResetToken()).isNull();
         assertThat(persistido.getResetTokenExpira()).isNull();
+        // Restablecer la contraseña invalida TODAS las sesiones activas
+        assertThat(persistido.getTokenVersion()).isEqualTo(1);
     }
 
     @Test
     @DisplayName("restablecer-password con token EXPIRADO → 404 genérico (indistinguible del inexistente)")
     void restablecerPassword_tokenExpirado_errorGenerico() throws Exception {
         String token = UUID.randomUUID().toString();
-        usuario.setResetToken(token);
+        usuario.setResetToken(hashSha256(token));
         usuario.setResetTokenExpira(LocalDateTime.now().minusHours(1));
         usuarioRepository.save(usuario);
 
@@ -200,7 +213,7 @@ class RecuperoPasswordIntegrationTest {
     @DisplayName("restablecer-password con password DÉBIL → 400 con la misma validación que el registro")
     void restablecerPassword_passwordDebil_mismoErrorQueRegistro() throws Exception {
         String token = UUID.randomUUID().toString();
-        usuario.setResetToken(token);
+        usuario.setResetToken(hashSha256(token));
         usuario.setResetTokenExpira(LocalDateTime.now().plusHours(1));
         usuarioRepository.save(usuario);
 
@@ -211,5 +224,84 @@ class RecuperoPasswordIntegrationTest {
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString(
                                 "La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula, un número y un símbolo")));
+    }
+
+    // ──────────────────────────────────────────────
+    //  TOKEN VERSION (invalidar sesiones activas al restablecer)
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Un usuario recién registrado arranca con tokenVersion=0")
+    void usuarioNuevo_arrancaConTokenVersionCero() {
+        Usuario recienCreado = usuarioRepository.save(Usuario.builder()
+                .email("recien@ejemplo.com")
+                .passwordHash(passwordEncoder.encode("Segura123!"))
+                .nombre("Recién Creado")
+                .rol(RolUsuario.FAMILIAR)
+                .build());
+
+        assertThat(recienCreado.getTokenVersion()).isZero();
+    }
+
+    @Test
+    @DisplayName("Restablecer la contraseña invalida las sesiones activas: el token VIEJO no autentica, el NUEVO sí")
+    void restablecerPassword_invalidaSesionesActivas() throws Exception {
+        // 1. Login con la contraseña actual → token VIEJO (versión 0)
+        MvcResult loginViejo = mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"recupero@ejemplo.com\",\"password\":\"Segura123!\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String tokenViejo = loginViejo.getResponse().getCookie("jwt").getValue();
+        assertThat(tokenViejo).isNotBlank();
+
+        // El token viejo autentica ANTES de restablecer
+        mockMvc.perform(get("/api/usuarios/me")
+                        .header("Authorization", "Bearer " + tokenViejo))
+                .andExpect(status().isOk());
+
+        // 2. Flujo de recupero: token + hash en BD (como lo guarda olvide-password)
+        String resetToken = UUID.randomUUID().toString();
+        usuario.setResetToken(hashSha256(resetToken));
+        usuario.setResetTokenExpira(LocalDateTime.now().plusHours(1));
+        usuarioRepository.save(usuario);
+
+        // 3. Restablecer la contraseña (incrementa tokenVersion)
+        mockMvc.perform(post("/auth/restablecer-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + resetToken + "\",\"password\":\"NuevaClave1!\"}"))
+                .andExpect(status().isOk());
+
+        // 4. El token VIEJO ya NO autentica en un endpoint protegido (misma respuesta que un token inválido)
+        mockMvc.perform(get("/api/usuarios/me")
+                        .header("Authorization", "Bearer " + tokenViejo))
+                .andExpect(status().isUnauthorized());
+
+        // 5. Login de nuevo → token NUEVO (versión 1) que SÍ funciona
+        MvcResult loginNuevo = mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"recupero@ejemplo.com\",\"password\":\"NuevaClave1!\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String tokenNuevo = loginNuevo.getResponse().getCookie("jwt").getValue();
+        assertThat(tokenNuevo).isNotBlank();
+
+        mockMvc.perform(get("/api/usuarios/me")
+                        .header("Authorization", "Bearer " + tokenNuevo))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * Misma codificación que AuthService.hashResetToken: SHA-256 en hex.
+     * Si el helper de producción cambiara, estos asserts fallarían.
+     */
+    private static String hashSha256(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

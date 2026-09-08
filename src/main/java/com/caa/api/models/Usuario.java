@@ -51,6 +51,18 @@ public class Usuario {
     @Column(name = "reset_token_expira")
     private LocalDateTime resetTokenExpira;
 
+    /**
+     * Versión del token JWT. Se incrementa al restablecer la contraseña para
+     * invalidar TODAS las sesiones activas de la cuenta en cualquier dispositivo.
+     * Almacenado como claim en cada JWT; el filtro lo compara con el usuario real.
+     * <p>
+     * {@code @Builder.Default} es OBLIGATORIO: sin él, el builder de Lombok no
+     * copia el inicializador y los usuarios nuevos nacerían con {@code null}.
+     */
+    @Builder.Default
+    @Column(name = "token_version", nullable = false)
+    private Integer tokenVersion = 0;
+
     @CreationTimestamp
     @Column(name = "creado_en", nullable = false)
     private LocalDateTime creadoEn;

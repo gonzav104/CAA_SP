@@ -127,6 +127,13 @@
             <artifactId>google-api-client</artifactId>
             <version>2.9.0</version>
         </dependency>
+
+        <!-- Bucket4j: rate limiting en memoria (token bucket) para operaciones sensibles (login, recupero de password) -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>8.10.1</version>
+        </dependency>
     </dependencies>
 
     <build>

@@ -2,6 +2,7 @@ package com.caa.api.config;
 
 import com.caa.api.exceptions.ConflictoException;
 import com.caa.api.exceptions.CredencialesInvalidasException;
+import com.caa.api.exceptions.DemasiadosIntentosException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -70,6 +71,23 @@ public class GlobalExceptionHandler {
                         "timestamp", LocalDateTime.now().toString(),
                         "status", 404,
                         "error", "Recurso no encontrado",
+                        "message", ex.getMessage()
+                ));
+    }
+
+    /**
+     * 429 genérico y uniforme para el rate limit (login, recupero de password).
+     * El mensaje es genérico: no revela qué operación se limitó ni si el email existe.
+     */
+    @ExceptionHandler(DemasiadosIntentosException.class)
+    public ResponseEntity<Map<String, Object>> handleDemasiadosIntentos(
+            DemasiadosIntentosException ex) {
+        log.warn("Rate limit alcanzado: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 429,
+                        "error", "Demasiadas peticiones",
                         "message", ex.getMessage()
                 ));
     }

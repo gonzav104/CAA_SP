@@ -122,7 +122,7 @@ class JwtServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("generarToken → token tiene subject = email y claim 'rol'")
+    @DisplayName("generarToken → token tiene subject = email, claim 'rol' y claim tokenVersion")
     void generarToken_contieneEmailYRol() {
         String token = jwtService.generarToken(usuario);
 
@@ -136,6 +136,40 @@ class JwtServiceTest {
 
         assertThat(claims.getSubject()).isEqualTo("test@ejemplo.com");
         assertThat(claims.get("rol", String.class)).isEqualTo("FAMILIAR");
+        // El builder de Usuario arranca en 0 (@Builder.Default)
+        assertThat(claims.get("tokenVersion", Number.class).intValue()).isZero();
+    }
+
+    @Test
+    @DisplayName("generarToken → el claim tokenVersion refleja el valor ACTUAL del Usuario")
+    void generarToken_tokenVersionReflejaElValorDelUsuario() {
+        usuario.setTokenVersion(7);
+
+        String token = jwtService.generarToken(usuario);
+
+        var claims = Jwts.parser()
+                .verifyWith(testKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        assertThat(claims.get("tokenVersion", Number.class).intValue()).isEqualTo(7);
+    }
+
+    @Test
+    @DisplayName("generarToken con tokenVersion null (datos viejos) → claim tokenVersion = 0 (defensivo)")
+    void generarToken_tokenVersionNull_seTrataComoCero() {
+        usuario.setTokenVersion(null);
+
+        String token = jwtService.generarToken(usuario);
+
+        var claims = Jwts.parser()
+                .verifyWith(testKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+        assertThat(claims.get("tokenVersion", Number.class).intValue()).isZero();
     }
 
     @Test

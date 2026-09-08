@@ -3,6 +3,7 @@ package com.caa.api.config;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -35,12 +36,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (StringUtils.hasText(token)) {
             try {
-                String email = jwtService.validarYObtenerEmail(token);
+                Claims claims = jwtService.obtenerClaimsValidados(token);
+                String email = claims.getSubject();
 
                 if (SecurityContextHolder.getContext().getAuthentication() == null) {
                     Usuario usuario = usuarioRepository.findByEmail(email).orElse(null);
 
-                    if (usuario != null) {
+                    if (usuario != null && versionCoincide(claims, usuario)) {
                         SimpleGrantedAuthority authority = new SimpleGrantedAuthority(
                                 "ROLE_" + usuario.getRol().name());
 
@@ -60,6 +62,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Compara el claim {@code tokenVersion} del token contra la versión ACTUAL
+     * del usuario en la BD. Si no coinciden, el token se trata exactamente como
+     * inválido (sin autenticar y sin lanzar excepción).
+     * <p>
+     * Defensivo: token sin claim (emitido antes de esta versión) se trata como 0,
+     * y {@code tokenVersion} null en datos viejos también se trata como 0.
+     */
+    private boolean versionCoincide(Claims claims, Usuario usuario) {
+        Number versionDelToken = claims.get("tokenVersion", Number.class);
+        int versionClaim = versionDelToken == null ? 0 : versionDelToken.intValue();
+        int versionActual = usuario.getTokenVersion() == null ? 0 : usuario.getTokenVersion();
+        return versionClaim == versionActual;
     }
 
     /**

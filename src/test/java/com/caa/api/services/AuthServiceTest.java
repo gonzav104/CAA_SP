@@ -6,13 +6,19 @@ import com.caa.api.dtos.GoogleCompletarRegistroDTO;
 import com.caa.api.dtos.LoginRequestDTO;
 import com.caa.api.dtos.RestablecerPasswordDTO;
 import com.caa.api.exceptions.CredencialesInvalidasException;
+import com.caa.api.exceptions.DemasiadosIntentosException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.AuthService.GoogleLoginResult;
 import com.caa.api.services.GoogleTokenVerifier.GoogleUsuario;
+import com.caa.api.services.RateLimitService.Operacion;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -51,6 +58,9 @@ class AuthServiceTest {
 
     @Mock
     private EmailService emailService;
+
+    @Mock
+    private RateLimitService rateLimitService;
 
     @InjectMocks
     private AuthService authService;
@@ -200,6 +210,8 @@ class AuthServiceTest {
         Usuario creado = captor.getValue();
         assertThat(creado.getRol()).isEqualTo(RolUsuario.FAMILIAR);
         assertThat(creado.getEmail()).isEqualTo("nuevo@ejemplo.com");
+        // Un usuario recién creado arranca con tokenVersion=0 (@Builder.Default)
+        assertThat(creado.getTokenVersion()).isZero();
         verify(emailService).enviarBienvenida(creado);
 
         // Respuesta
@@ -271,7 +283,7 @@ class AuthServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("olvidePassword con email EXISTENTE → guarda el token (plano) con expiración y envía el MISMO token por email")
+    @DisplayName("olvidePassword con email EXISTENTE → guarda el HASH del token (no el plano) con expiración y envía el token plano por email")
     void olvidePassword_emailExistente_guardaTokenYEnviaEmail() {
         given(usuarioRepository.findByEmail("test@ejemplo.com"))
                 .willReturn(Optional.of(usuarioExistente));
@@ -285,10 +297,12 @@ class AuthServiceTest {
         ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
         verify(emailService).enviarRecuperacionPassword(any(Usuario.class), tokenCaptor.capture());
 
-        String tokenEnviado = tokenCaptor.getValue();
-        assertThat(tokenEnviado).isNotBlank();
-        // En BD se guarda el MISMO token plano que viaja por email.
-        assertThat(guardado.getResetToken()).isEqualTo(tokenEnviado);
+        String tokenPlano = tokenCaptor.getValue();
+        assertThat(tokenPlano).isNotBlank();
+        // En BD se guarda SOLO el hash SHA-256: el token plano nunca se persiste.
+        assertThat(guardado.getResetToken()).isNotBlank();
+        assertThat(guardado.getResetToken()).isNotEqualTo(tokenPlano);
+        assertThat(guardado.getResetToken()).isEqualTo(hashSha256(tokenPlano));
         assertThat(guardado.getResetTokenExpira())
                 .isAfter(LocalDateTime.now())
                 .isBefore(LocalDateTime.now().plusHours(2));
@@ -307,12 +321,13 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("restablecerPassword con token VÁLIDO → busca por el token plano, cambia la contraseña y limpia el token")
+    @DisplayName("restablecerPassword con token VÁLIDO → busca por el HASH, cambia la contraseña, limpia el token y sube tokenVersion")
     void restablecerPassword_tokenValido_cambiaPasswordYLimpiarToken() {
         String token = "token-valido";
-        usuarioExistente.setResetToken(token);
+        // El token se guardó hasheado (olvidePassword nunca persiste el plano)
+        usuarioExistente.setResetToken(hashSha256(token));
         usuarioExistente.setResetTokenExpira(LocalDateTime.now().plusHours(1));
-        given(usuarioRepository.findByResetToken(token))
+        given(usuarioRepository.findByResetToken(hashSha256(token)))
                 .willReturn(Optional.of(usuarioExistente));
         given(passwordEncoder.encode("NuevaClave1!")).willReturn("$2a$10$hashNuevo");
 
@@ -325,15 +340,17 @@ class AuthServiceTest {
         assertThat(guardado.getPasswordHash()).isEqualTo("$2a$10$hashNuevo");
         assertThat(guardado.getResetToken()).isNull();
         assertThat(guardado.getResetTokenExpira()).isNull();
+        // Restablecer la contraseña invalida TODAS las sesiones activas
+        assertThat(guardado.getTokenVersion()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("restablecerPassword con token EXPIRADO → error genérico, no cambia la contraseña")
+    @DisplayName("restablecerPassword con token EXPIRADO → error genérico, no cambia la contraseña ni la tokenVersion")
     void restablecerPassword_tokenExpirado_errorGenerico() {
         String token = "token-expirado";
-        usuarioExistente.setResetToken(token);
+        usuarioExistente.setResetToken(hashSha256(token));
         usuarioExistente.setResetTokenExpira(LocalDateTime.now().minusHours(1));
-        given(usuarioRepository.findByResetToken(token))
+        given(usuarioRepository.findByResetToken(hashSha256(token)))
                 .willReturn(Optional.of(usuarioExistente));
 
         assertThatThrownBy(() -> authService.restablecerPassword(
@@ -348,12 +365,82 @@ class AuthServiceTest {
     @Test
     @DisplayName("restablecerPassword con token INEXISTENTE → el MISMO error genérico que el expirado")
     void restablecerPassword_tokenInexistente_mismoErrorQueExpirado() {
-        given(usuarioRepository.findByResetToken("token-inexistente"))
+        // El lookup interno es por el hash del token recibido
+        given(usuarioRepository.findByResetToken(hashSha256("token-inexistente")))
                 .willReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.restablecerPassword(
                 new RestablecerPasswordDTO("token-inexistente", "NuevaClave1!")))
                 .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessage("El enlace no es válido o ha expirado");
+    }
+
+    // ──────────────────────────────────────────────
+    //  RATE LIMIT (anti fuerza bruta)
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("login con rate limit superado → lanza DemasiadosIntentosException ANTES de tocar el repositorio")
+    void login_superaLimite_lanzaDemasiadosIntentos() {
+        LoginRequestDTO dto = new LoginRequestDTO("test@ejemplo.com", "cualquiera");
+        doThrow(new DemasiadosIntentosException())
+                .when(rateLimitService)
+                .verificarYConsumir(Operacion.LOGIN, "test@ejemplo.com");
+
+        assertThatThrownBy(() -> authService.login(dto))
+                .isInstanceOf(DemasiadosIntentosException.class);
+
+        // El chequeo ocurre ANTES de validar credenciales/existencia
+        verify(usuarioRepository, never()).findByEmail(anyString());
+        verify(passwordEncoder, never()).matches(anyString(), anyString());
+        verify(jwtService, never()).generarToken(any());
+    }
+
+    @Test
+    @DisplayName("olvidePassword con rate limit superado → lanza DemasiadosIntentosException ANTES de verificar el email")
+    void olvidePassword_superaLimite_lanzaDemasiadosIntentos() {
+        doThrow(new DemasiadosIntentosException())
+                .when(rateLimitService)
+                .verificarYConsumir(Operacion.OLVIDE_PASSWORD, "test@ejemplo.com");
+
+        assertThatThrownBy(() -> authService.olvidePassword("test@ejemplo.com"))
+                .isInstanceOf(DemasiadosIntentosException.class);
+
+        verify(usuarioRepository, never()).findByEmail(anyString());
+        verify(usuarioRepository, never()).save(any());
+        verify(emailService, never()).enviarRecuperacionPassword(any(), anyString());
+    }
+
+    @Test
+    @DisplayName("login consume cupo de rate limit antes de validar credenciales (fallido y exitoso cuentan)")
+    void login_consumeCupoRateLimit_antesDeValidarCredenciales() {
+        LoginRequestDTO dto = new LoginRequestDTO("test@ejemplo.com", "passwordMala");
+        given(usuarioRepository.findByEmail("test@ejemplo.com"))
+                .willReturn(Optional.of(usuarioExistente));
+        given(passwordEncoder.matches("passwordMala", usuarioExistente.getPasswordHash()))
+                .willReturn(false);
+
+        assertThatThrownBy(() -> authService.login(dto))
+                .isInstanceOf(CredencialesInvalidasException.class);
+
+        verify(rateLimitService).verificarYConsumir(Operacion.LOGIN, "test@ejemplo.com");
+    }
+
+    // ──────────────────────────────────────────────
+    //  HELPERS
+    // ──────────────────────────────────────────────
+
+    /**
+     * Misma codificación que AuthService.hashResetToken: SHA-256 en hex.
+     * Si el helper de producción cambiara, estos asserts fallarían.
+     */
+    private static String hashSha256(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

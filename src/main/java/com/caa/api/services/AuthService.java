@@ -10,7 +10,11 @@ import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.GoogleTokenVerifier.GoogleUsuario;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -36,8 +40,13 @@ public class AuthService {
     private final JwtService jwtService;
     private final GoogleTokenVerifier googleTokenVerifier;
     private final EmailService emailService;
+    private final RateLimitService rateLimitService;
 
     public AuthResponseDTO login(LoginRequestDTO dto) {
+        // Anti fuerza bruta: el chequeo va ANTES de validar credenciales.
+        // Un login fallido consume cupo, y también uno exitoso.
+        rateLimitService.verificarYConsumir(RateLimitService.Operacion.LOGIN, dto.email());
+
         Usuario usuario = usuarioRepository.findByEmail(dto.email())
                 .orElseThrow(CredencialesInvalidasException::new);
 
@@ -120,11 +129,14 @@ public class AuthService {
      * mismo resultado de éxito que si existiera.
      */
     public void olvidePassword(String email) {
+        // Anti fuerza bruta: el chequeo va ANTES de verificar si el email existe.
+        rateLimitService.verificarYConsumir(RateLimitService.Operacion.OLVIDE_PASSWORD, email);
+
         usuarioRepository.findByEmail(email).ifPresent(usuario -> {
             String token = UUID.randomUUID().toString();
-            // En BD se guarda el token plano; el mismo token viaja por email
-            // para que el usuario lo use en el link de recupero.
-            usuario.setResetToken(token);
+            // En BD se guarda SOLO el hash SHA-256 del token; el token plano viaja
+            // por email (el usuario lo necesita para el link) y nunca se persiste.
+            usuario.setResetToken(hashResetToken(token));
             usuario.setResetTokenExpira(LocalDateTime.now().plusHours(1));
             usuarioRepository.save(usuario);
 
@@ -139,7 +151,9 @@ public class AuthService {
      * genérico, para no revelar cuál de los dos casos es.
      */
     public void restablecerPassword(RestablecerPasswordDTO dto) {
-        Usuario usuario = usuarioRepository.findByResetToken(dto.token())
+        // El token que llega por el link se hashea con la MISMA función que se
+        // usó al guardarlo: se busca por el hash almacenado.
+        Usuario usuario = usuarioRepository.findByResetToken(hashResetToken(dto.token()))
                 .orElseThrow(() -> new RecursoNoEncontradoException(MENSAJE_ENLACE_INVALIDO));
 
         if (usuario.getResetTokenExpira() == null
@@ -151,6 +165,24 @@ public class AuthService {
         // El token es de un solo uso: se limpia para que no se pueda reutilizar.
         usuario.setResetToken(null);
         usuario.setResetTokenExpira(null);
+        // Invalida TODA sesión activa de la cuenta (cualquier dispositivo):
+        // los JWT emitidos con la versión anterior dejan de autenticar.
+        usuario.setTokenVersion((usuario.getTokenVersion() == null ? 0 : usuario.getTokenVersion()) + 1);
         usuarioRepository.save(usuario);
+    }
+
+    /**
+     * SHA-256 en hex (minúsculas) del token plano. Helper único para ambos lados:
+     * {@code olvidePassword} guarda el hash y {@code restablecerPassword} busca
+     * por el hash — ambos usan EXACTAMENTE la misma codificación.
+     */
+    private static String hashResetToken(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 no disponible en este JVM", e);
+        }
     }
 }

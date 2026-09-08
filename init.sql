@@ -20,6 +20,7 @@ CREATE TABLE usuarios (
                           rol rol_usuario NOT NULL,
                           reset_token VARCHAR(255),
                           reset_token_expira TIMESTAMP WITH TIME ZONE,
+                          token_version INTEGER NOT NULL DEFAULT 0,
                           creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -182,3 +183,10 @@ CREATE INDEX IF NOT EXISTS idx_cartillas_creador ON cartillas(creador_id);
 -- ========================================================
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS reset_token VARCHAR(255);
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS reset_token_expira TIMESTAMP WITH TIME ZONE;
+
+-- ========================================================
+-- MIGRACIÓN 004 — usuarios.token_version (invalidar sesiones al restablecer password)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 003.
+-- Las filas existentes quedan en 0 (sin backfill): la versión arranca en 0 para todos.
+-- ========================================================
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;

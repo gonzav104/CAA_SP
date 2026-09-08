@@ -44,7 +44,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "cloudinary.cloud-name=test-cloud",
         "cloudinary.api-key=test-api-key",
         "cloudinary.api-secret=test-api-secret",
-        "resend.api-key=test-resend-api-key"
+        "resend.api-key=test-resend-api-key",
+        // Este suite NO testea rate limit: deshabilitado (el UsuarioRepository está mockeado,
+        // el único POST /auth/login es un body vacío que ni llega al servicio).
+        "app.rate-limit.enabled=false"
 })
 @DisplayName("Seguridad — Tests de integración con MockMvc")
 class SecurityIntegrationTest {
