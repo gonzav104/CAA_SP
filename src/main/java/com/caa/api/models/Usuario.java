@@ -45,6 +45,12 @@ public class Usuario {
     @Column(name = "rol", nullable = false)
     private RolUsuario rol;
 
+    @Column(name = "reset_token")
+    private String resetToken;
+
+    @Column(name = "reset_token_expira")
+    private LocalDateTime resetTokenExpira;
+
     @CreationTimestamp
     @Column(name = "creado_en", nullable = false)
     private LocalDateTime creadoEn;

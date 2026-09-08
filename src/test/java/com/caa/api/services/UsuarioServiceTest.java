@@ -37,6 +37,9 @@ class UsuarioServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private EmailService emailService;
+
     @InjectMocks
     private UsuarioServiceImpl usuarioService;
 
@@ -58,6 +61,7 @@ class UsuarioServiceTest {
                 .hasMessageContaining("ya está registrado");
 
         verify(usuarioRepository, never()).save(any());
+        verify(emailService, never()).enviarBienvenida(any());
     }
 
     @Test
@@ -82,5 +86,6 @@ class UsuarioServiceTest {
         assertThat(response).isNotNull();
         assertThat(response.email()).isEqualTo("nuevo@ejemplo.com");
         assertThat(response.rol()).isEqualTo(RolUsuario.TERAPEUTA);
+        verify(emailService).enviarBienvenida(guardado);
     }
 }

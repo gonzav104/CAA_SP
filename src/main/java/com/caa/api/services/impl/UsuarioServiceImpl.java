@@ -6,6 +6,7 @@ import com.caa.api.exceptions.ConflictoException;
 import com.caa.api.exceptions.CredencialesInvalidasException;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.EmailService;
 import com.caa.api.services.UsuarioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -17,6 +18,7 @@ public class UsuarioServiceImpl implements UsuarioService {
 
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
     @Override
     public UsuarioResponseDTO registrarUsuario(UsuarioRegistroDTO dto) {
@@ -32,6 +34,9 @@ public class UsuarioServiceImpl implements UsuarioService {
                 .build();
 
         Usuario usuarioGuardado = usuarioRepository.save(usuario);
+
+        // Efecto secundario: EmailServiceImpl nunca propaga excepciones.
+        emailService.enviarBienvenida(usuarioGuardado);
 
         return new UsuarioResponseDTO(
                 usuarioGuardado.getId(),

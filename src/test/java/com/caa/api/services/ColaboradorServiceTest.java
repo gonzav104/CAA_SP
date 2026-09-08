@@ -43,6 +43,7 @@ class ColaboradorServiceTest {
     @Mock private PacienteFamiliarRepository pacienteFamiliarRepository;
     @Mock private PacienteRepository pacienteRepository;
     @Mock private UsuarioRepository usuarioRepository;
+    @Mock private EmailService emailService;
 
     @InjectMocks private ColaboradorServiceImpl colaboradorService;
 
@@ -106,6 +107,7 @@ class ColaboradorServiceTest {
                 .hasMessageContaining("no tiene permisos");
 
         verify(pacienteFamiliarRepository, never()).save(any());
+        verify(emailService, never()).enviarInvitacionColaborador(any(), any(), any());
     }
 
     @Test
@@ -201,6 +203,9 @@ class ColaboradorServiceTest {
         ArgumentCaptor<PacienteFamiliar> captor = ArgumentCaptor.forClass(PacienteFamiliar.class);
         verify(pacienteFamiliarRepository).saveAndFlush(captor.capture());
         assertThat(captor.getValue().getPermiso()).isEqualTo(PermisoColaborador.EDICION_LIMITADA);
+
+        // La invitación se envía al colaborador con el permiso del vínculo
+        verify(emailService).enviarInvitacionColaborador(familiar, paciente, PermisoColaborador.EDICION_LIMITADA);
     }
 
     // ──────────────────────────────────────────────

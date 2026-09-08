@@ -14,6 +14,7 @@ import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.ColaboradorService;
+import com.caa.api.services.EmailService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ public class ColaboradorServiceImpl implements ColaboradorService {
     private final PacienteFamiliarRepository pacienteFamiliarRepository;
     private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final EmailService emailService;
 
     @Override
     @Transactional
@@ -53,6 +55,10 @@ public class ColaboradorServiceImpl implements ColaboradorService {
                 .build();
 
         PacienteFamiliar guardado = pacienteFamiliarRepository.saveAndFlush(vinculo);
+
+        // Efecto secundario: EmailServiceImpl nunca propaga excepciones.
+        emailService.enviarInvitacionColaborador(familiar, paciente, guardado.getPermiso());
+
         return toResponseDTO(guardado);
     }
 

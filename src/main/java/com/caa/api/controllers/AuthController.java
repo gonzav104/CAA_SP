@@ -5,11 +5,14 @@ import com.caa.api.dtos.GoogleAuthResponseDTO;
 import com.caa.api.dtos.GoogleCompletarRegistroDTO;
 import com.caa.api.dtos.GoogleLoginDTO;
 import com.caa.api.dtos.LoginRequestDTO;
+import com.caa.api.dtos.OlvidePasswordDTO;
+import com.caa.api.dtos.RestablecerPasswordDTO;
 import com.caa.api.services.AuthService;
 import com.caa.api.services.AuthService.GoogleLoginResult;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -72,6 +75,27 @@ public class AuthController {
         response.addCookie(cookie);
 
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/olvide-password")
+    public ResponseEntity<Map<String, String>> olvidePassword(
+            @Valid @RequestBody OlvidePasswordDTO dto) {
+
+        authService.olvidePassword(dto.email());
+
+        // Respuesta idéntica exista o no el email: nunca revelar si la cuenta está registrada.
+        return ResponseEntity.ok(Map.of(
+                "message", "Si el email está registrado, vas a recibir un enlace para restablecer tu contraseña"));
+    }
+
+    @PostMapping("/restablecer-password")
+    public ResponseEntity<Map<String, String>> restablecerPassword(
+            @Valid @RequestBody RestablecerPasswordDTO dto) {
+
+        authService.restablecerPassword(dto);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Tu contraseña fue restablecida correctamente"));
     }
 
     private void setJwtCookie(HttpServletResponse response, String token) {

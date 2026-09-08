@@ -57,6 +57,8 @@ public class SecurityConfig {
                         .requestMatchers("/auth/login").permitAll()
                         .requestMatchers("/auth/google").permitAll()
                         .requestMatchers("/auth/google/completar-registro").permitAll()
+                        .requestMatchers("/auth/olvide-password").permitAll()
+                        .requestMatchers("/auth/restablecer-password").permitAll()
                         .requestMatchers("/auth/logout").permitAll()
                         .requestMatchers("/v3/api-docs/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html").permitAll()

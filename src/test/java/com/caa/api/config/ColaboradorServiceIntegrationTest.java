@@ -35,7 +35,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "jwt.expiration-ms=3600000",
         "cloudinary.cloud-name=test-cloud",
         "cloudinary.api-key=test-api-key",
-        "cloudinary.api-secret=test-api-secret"
+        "cloudinary.api-secret=test-api-secret",
+        "resend.api-key=test-resend-api-key"
 })
 @Transactional
 @DisplayName("ColaboradorService — Integración de punta a punta contra H2")

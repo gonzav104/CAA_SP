@@ -18,6 +18,8 @@ CREATE TABLE usuarios (
                           password_hash VARCHAR(255) NOT NULL,
                           nombre VARCHAR(100) NOT NULL,
                           rol rol_usuario NOT NULL,
+                          reset_token VARCHAR(255),
+                          reset_token_expira TIMESTAMP WITH TIME ZONE,
                           creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -172,3 +174,11 @@ END $$;
 
 -- 5. Índice para el look-up de ownership (findByIdAndPacienteIdAndCreadorId)
 CREATE INDEX IF NOT EXISTS idx_cartillas_creador ON cartillas(creador_id);
+
+-- ========================================================
+-- MIGRACIÓN 003 — usuarios.reset_token / reset_token_expira (recupero de contraseña)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 002.
+-- Ambas columnas son nullable: solo se pueblan cuando se pide un recupero.
+-- ========================================================
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS reset_token VARCHAR(255);
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS reset_token_expira TIMESTAMP WITH TIME ZONE;

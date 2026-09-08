@@ -114,6 +114,13 @@
             <version>1.39.0</version>
         </dependency>
 
+        <!-- Resend: envío de emails transaccionales (bienvenida, recupero de password, invitación de colaborador) -->
+        <dependency>
+            <groupId>com.resend</groupId>
+            <artifactId>resend-java</artifactId>
+            <version>4.23.0</version>
+        </dependency>
+
         <!-- Google API Client: verificación de tokens de ID de Google OAuth 2.0 (login con Google) -->
         <dependency>
             <groupId>com.google.api-client</groupId>

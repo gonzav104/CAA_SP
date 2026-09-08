@@ -4,12 +4,15 @@ import com.caa.api.dtos.AuthResponseDTO;
 import com.caa.api.dtos.GoogleAuthResponseDTO;
 import com.caa.api.dtos.GoogleCompletarRegistroDTO;
 import com.caa.api.dtos.LoginRequestDTO;
+import com.caa.api.dtos.RestablecerPasswordDTO;
 import com.caa.api.exceptions.CredencialesInvalidasException;
+import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.AuthService.GoogleLoginResult;
 import com.caa.api.services.GoogleTokenVerifier.GoogleUsuario;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +48,9 @@ class AuthServiceTest {
 
     @Mock
     private GoogleTokenVerifier googleTokenVerifier;
+
+    @Mock
+    private EmailService emailService;
 
     @InjectMocks
     private AuthService authService;
@@ -194,6 +200,7 @@ class AuthServiceTest {
         Usuario creado = captor.getValue();
         assertThat(creado.getRol()).isEqualTo(RolUsuario.FAMILIAR);
         assertThat(creado.getEmail()).isEqualTo("nuevo@ejemplo.com");
+        verify(emailService).enviarBienvenida(creado);
 
         // Respuesta
         assertThat(result.dto().requiereRol()).isFalse();
@@ -242,6 +249,7 @@ class AuthServiceTest {
         assertThat(result.dto().tipo()).isEqualTo("Bearer");
         assertThat(result.token()).isPresent().contains("jwt-token-carrera");
         verify(usuarioRepository, never()).save(any());
+        verify(emailService, never()).enviarBienvenida(any());
     }
 
     @Test
@@ -256,5 +264,96 @@ class AuthServiceTest {
 
         verify(usuarioRepository, never()).save(any());
         verify(jwtService, never()).generarToken(any());
+    }
+
+    // ──────────────────────────────────────────────
+    //  RECUPERO DE CONTRASEÑA
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("olvidePassword con email EXISTENTE → guarda el token (plano) con expiración y envía el MISMO token por email")
+    void olvidePassword_emailExistente_guardaTokenYEnviaEmail() {
+        given(usuarioRepository.findByEmail("test@ejemplo.com"))
+                .willReturn(Optional.of(usuarioExistente));
+
+        authService.olvidePassword("test@ejemplo.com");
+
+        ArgumentCaptor<Usuario> usuarioCaptor = ArgumentCaptor.forClass(Usuario.class);
+        verify(usuarioRepository).save(usuarioCaptor.capture());
+        Usuario guardado = usuarioCaptor.getValue();
+
+        ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
+        verify(emailService).enviarRecuperacionPassword(any(Usuario.class), tokenCaptor.capture());
+
+        String tokenEnviado = tokenCaptor.getValue();
+        assertThat(tokenEnviado).isNotBlank();
+        // En BD se guarda el MISMO token plano que viaja por email.
+        assertThat(guardado.getResetToken()).isEqualTo(tokenEnviado);
+        assertThat(guardado.getResetTokenExpira())
+                .isAfter(LocalDateTime.now())
+                .isBefore(LocalDateTime.now().plusHours(2));
+    }
+
+    @Test
+    @DisplayName("olvidePassword con email INEXISTENTE → no guarda nada ni envía email (éxito silencioso)")
+    void olvidePassword_emailInexistente_noHaceNada() {
+        given(usuarioRepository.findByEmail("noexiste@ejemplo.com"))
+                .willReturn(Optional.empty());
+
+        authService.olvidePassword("noexiste@ejemplo.com");
+
+        verify(usuarioRepository, never()).save(any());
+        verify(emailService, never()).enviarRecuperacionPassword(any(), anyString());
+    }
+
+    @Test
+    @DisplayName("restablecerPassword con token VÁLIDO → busca por el token plano, cambia la contraseña y limpia el token")
+    void restablecerPassword_tokenValido_cambiaPasswordYLimpiarToken() {
+        String token = "token-valido";
+        usuarioExistente.setResetToken(token);
+        usuarioExistente.setResetTokenExpira(LocalDateTime.now().plusHours(1));
+        given(usuarioRepository.findByResetToken(token))
+                .willReturn(Optional.of(usuarioExistente));
+        given(passwordEncoder.encode("NuevaClave1!")).willReturn("$2a$10$hashNuevo");
+
+        authService.restablecerPassword(new RestablecerPasswordDTO(token, "NuevaClave1!"));
+
+        ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
+        verify(usuarioRepository).save(captor.capture());
+
+        Usuario guardado = captor.getValue();
+        assertThat(guardado.getPasswordHash()).isEqualTo("$2a$10$hashNuevo");
+        assertThat(guardado.getResetToken()).isNull();
+        assertThat(guardado.getResetTokenExpira()).isNull();
+    }
+
+    @Test
+    @DisplayName("restablecerPassword con token EXPIRADO → error genérico, no cambia la contraseña")
+    void restablecerPassword_tokenExpirado_errorGenerico() {
+        String token = "token-expirado";
+        usuarioExistente.setResetToken(token);
+        usuarioExistente.setResetTokenExpira(LocalDateTime.now().minusHours(1));
+        given(usuarioRepository.findByResetToken(token))
+                .willReturn(Optional.of(usuarioExistente));
+
+        assertThatThrownBy(() -> authService.restablecerPassword(
+                new RestablecerPasswordDTO(token, "NuevaClave1!")))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessage("El enlace no es válido o ha expirado");
+
+        verify(usuarioRepository, never()).save(any());
+        verify(passwordEncoder, never()).encode(anyString());
+    }
+
+    @Test
+    @DisplayName("restablecerPassword con token INEXISTENTE → el MISMO error genérico que el expirado")
+    void restablecerPassword_tokenInexistente_mismoErrorQueExpirado() {
+        given(usuarioRepository.findByResetToken("token-inexistente"))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.restablecerPassword(
+                new RestablecerPasswordDTO("token-inexistente", "NuevaClave1!")))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessage("El enlace no es válido o ha expirado");
     }
 }
