@@ -53,6 +53,7 @@ class DataSeederTest {
             assertThat(p.getEtiqueta()).isNotBlank();
             assertThat(p.getImagenUrl()).startsWith("https://static.arasaac.org/pictograms/")
                     .endsWith("_300.png");
+            assertThat(p.getArasaacId()).isPositive();
         });
 
         PictogramaGlobal agua = insertados.stream()

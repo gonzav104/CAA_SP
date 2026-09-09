@@ -74,6 +74,7 @@ public class DataSeeder implements CommandLineRunner {
                 .map(p -> PictogramaGlobal.builder()
                         .etiqueta(p.etiqueta())
                         .imagenUrl(p.imagenUrl())
+                        .arasaacId((long) p.arasaacId())
                         .build())
                 .toList();
 

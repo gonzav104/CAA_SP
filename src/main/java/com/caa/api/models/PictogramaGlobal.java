@@ -33,6 +33,9 @@ public class PictogramaGlobal {
     @Column(name = "imagen_url", nullable = false, columnDefinition = "TEXT")
     private String imagenUrl;
 
+    @Column(name = "arasaac_id")
+    private Long arasaacId;
+
     @CreationTimestamp
     @Column(name = "creado_en", updatable = false, columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private LocalDateTime creadoEn;

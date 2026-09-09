@@ -190,3 +190,21 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS reset_token_expira TIMESTAMP WITH 
 -- Las filas existentes quedan en 0 (sin backfill): la versión arranca en 0 para todos.
 -- ========================================================
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
+
+-- ========================================================
+-- MIGRACIÓN 005 — pictogramas_globales.arasaac_id (dedupe materialización ARASAAC)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 004.
+-- Columna nullable: los 24 seedados no requieren backfill obligatorio.
+-- UNIQUE constraint: garantiza dedupe por arasaacId (idempotencia del endpoint materializar).
+-- ========================================================
+ALTER TABLE pictogramas_globales ADD COLUMN IF NOT EXISTS arasaac_id BIGINT;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_pictogramas_globales_arasaac_id'
+    ) THEN
+        ALTER TABLE pictogramas_globales
+            ADD CONSTRAINT uq_pictogramas_globales_arasaac_id UNIQUE (arasaac_id);
+    END IF;
+END $$;

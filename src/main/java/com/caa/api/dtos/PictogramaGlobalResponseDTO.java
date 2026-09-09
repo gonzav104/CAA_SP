@@ -7,6 +7,7 @@ public record PictogramaGlobalResponseDTO(
         UUID id,
         String etiqueta,
         String imagenUrl,
+        Long arasaacId,
         LocalDateTime creadoEn
 ) {
 }
