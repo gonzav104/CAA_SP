@@ -1,2 +1,6 @@
-/mvnw text eol=lf
+# Normalización de line endings para trabajo mixto Windows + WSL/Linux.
+# Todo texto se almacena en git como LF; los scripts de Windows conservan CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
 *.cmd text eol=crlf
+/mvnw text eol=lf
