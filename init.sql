@@ -208,3 +208,22 @@ BEGIN
             ADD CONSTRAINT uq_pictogramas_globales_arasaac_id UNIQUE (arasaac_id);
     END IF;
 END $$;
+
+-- ========================================================
+-- MIGRACIÓN 006 — cartillas.paradigma (paradigma de organización del tablero)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 005.
+-- Solo soporta TAXONOMICA y ESQUEMATICA hoy (escena-visual queda fuera de alcance:
+-- requiere imagen de escena + coordenadas de hotspot por ítem, que el modelo no tiene).
+-- Backfill: toda cartilla existente queda en TAXONOMICA, que es el comportamiento
+-- actual del front (organizacionDeCartilla siempre devolvía el default hasta ahora).
+-- ========================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname = 'paradigma_cartilla'
+    ) THEN
+        CREATE TYPE paradigma_cartilla AS ENUM ('TAXONOMICA', 'ESQUEMATICA');
+    END IF;
+END $$;
+
+ALTER TABLE cartillas ADD COLUMN IF NOT EXISTS paradigma paradigma_cartilla NOT NULL DEFAULT 'TAXONOMICA';

@@ -18,6 +18,7 @@ import com.caa.api.models.ItemCartilla;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
+import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.models.RolUsuario;
@@ -232,6 +233,101 @@ class CartillaOwnershipIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"nombre\": \"Tablero X\", \"esPrincipal\": false}"))
                 .andExpect(status().isNotFound());
+
+        verify(cartillaRepository, never()).save(any());
+    }
+
+    // ──────────────────────────────────────────────
+    //  PARADIGMA — wire format lowercase (taxonomica/esquematica) y rechazo de escena-visual
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("POST cartilla: paradigma \"taxonomica\" (lowercase) → 201 y queda TAXONOMICA")
+    void postCartilla_paradigmaTaxonomica_201_persisteTaxonomica() throws Exception {
+        Cartilla guardada = Cartilla.builder()
+                .id(UUID.randomUUID()).paciente(paciente).creador(terapeuta)
+                .nombre("Tablero A").esPrincipal(false).paradigma(ParadigmaCartilla.TAXONOMICA).build();
+        given(cartillaRepository.save(any(Cartilla.class))).willReturn(guardada);
+
+        mockMvc.perform(post("/api/pacientes/{pacienteId}/cartillas", pacienteId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\": \"Tablero A\", \"esPrincipal\": false, \"paradigma\": \"taxonomica\"}"))
+                .andExpect(status().isCreated());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Cartilla.class);
+        verify(cartillaRepository).save(captor.capture());
+        assertThat(captor.getValue().getParadigma()).isEqualTo(ParadigmaCartilla.TAXONOMICA);
+    }
+
+    @Test
+    @DisplayName("POST cartilla: paradigma \"esquematica\" (lowercase) → 201 y queda ESQUEMATICA")
+    void postCartilla_paradigmaEsquematica_201_persisteEsquematica() throws Exception {
+        Cartilla guardada = Cartilla.builder()
+                .id(UUID.randomUUID()).paciente(paciente).creador(terapeuta)
+                .nombre("Tablero A").esPrincipal(false).paradigma(ParadigmaCartilla.ESQUEMATICA).build();
+        given(cartillaRepository.save(any(Cartilla.class))).willReturn(guardada);
+
+        mockMvc.perform(post("/api/pacientes/{pacienteId}/cartillas", pacienteId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\": \"Tablero A\", \"esPrincipal\": false, \"paradigma\": \"esquematica\"}"))
+                .andExpect(status().isCreated());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Cartilla.class);
+        verify(cartillaRepository).save(captor.capture());
+        assertThat(captor.getValue().getParadigma()).isEqualTo(ParadigmaCartilla.ESQUEMATICA);
+    }
+
+    @Test
+    @DisplayName("POST cartilla: paradigma \"escena-visual\" → 400 (no soportado, NO 500)")
+    void postCartilla_paradigmaEscenaVisual_400() throws Exception {
+        mockMvc.perform(post("/api/pacientes/{pacienteId}/cartillas", pacienteId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\": \"Tablero A\", \"esPrincipal\": false, \"paradigma\": \"escena-visual\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(cartillaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("POST cartilla: paradigma con string basura → 400 (no soportado, NO 500)")
+    void postCartilla_paradigmaBasura_400() throws Exception {
+        mockMvc.perform(post("/api/pacientes/{pacienteId}/cartillas", pacienteId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\": \"Tablero A\", \"esPrincipal\": false, \"paradigma\": \"asdasd\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(cartillaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("PUT cartilla: paradigma \"esquematica\" (lowercase) → 200 y actualiza a ESQUEMATICA")
+    void putCartilla_paradigmaEsquematica_200_actualizaEsquematica() throws Exception {
+        given(cartillaRepository.save(any(Cartilla.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        mockMvc.perform(put("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\": \"Tablero renovado\", \"esPrincipal\": true, \"paradigma\": \"esquematica\"}"))
+                .andExpect(status().isOk());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Cartilla.class);
+        verify(cartillaRepository).save(captor.capture());
+        assertThat(captor.getValue().getParadigma()).isEqualTo(ParadigmaCartilla.ESQUEMATICA);
+    }
+
+    @Test
+    @DisplayName("PUT cartilla: paradigma \"escena-visual\" → 400 (no soportado, NO 500)")
+    void putCartilla_paradigmaEscenaVisual_400() throws Exception {
+        mockMvc.perform(put("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\": \"Tablero renovado\", \"esPrincipal\": true, \"paradigma\": \"escena-visual\"}"))
+                .andExpect(status().isBadRequest());
 
         verify(cartillaRepository, never()).save(any());
     }

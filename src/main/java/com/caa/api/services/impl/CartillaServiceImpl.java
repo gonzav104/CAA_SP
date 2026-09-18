@@ -12,6 +12,7 @@ import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
 import com.caa.api.models.Paciente;
+import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.models.Usuario;
@@ -58,6 +59,7 @@ public class CartillaServiceImpl implements CartillaService {
                 .creador(usuario)
                 .nombre(dto.nombre())
                 .esPrincipal(dto.esPrincipal() != null && dto.esPrincipal())
+                .paradigma(dto.paradigma() != null ? dto.paradigma() : ParadigmaCartilla.TAXONOMICA)
                 .build();
 
         Cartilla guardada = cartillaRepository.save(cartilla);
@@ -99,6 +101,7 @@ public class CartillaServiceImpl implements CartillaService {
                 cartilla.getCreador().getId(),
                 cartilla.getNombre(),
                 cartilla.isEsPrincipal(),
+                cartilla.getParadigma(),
                 categorias
         );
     }
@@ -118,6 +121,9 @@ public class CartillaServiceImpl implements CartillaService {
         cartilla.setNombre(dto.nombre());
         if (dto.esPrincipal() != null) {
             cartilla.setEsPrincipal(dto.esPrincipal());
+        }
+        if (dto.paradigma() != null) {
+            cartilla.setParadigma(dto.paradigma());
         }
 
         Cartilla actualizada = cartillaRepository.save(cartilla);

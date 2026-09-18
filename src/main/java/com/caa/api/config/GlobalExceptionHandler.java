@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -46,6 +47,25 @@ public class GlobalExceptionHandler {
                         "status", 400,
                         "error", "Validacion fallida",
                         "message", mensaje
+                ));
+    }
+
+    /**
+     * 400 genérico para body JSON malformado o no interpretable (incluye valores de
+     * enum no reconocidos, por ejemplo un "paradigma" fuera del vocabulario soportado).
+     * Sin este handler, Spring delega en el catch-all genérico y responde 500,
+     * lo cual es incorrecto: un body inválido siempre es error del cliente.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMensajeNoLegible(
+            HttpMessageNotReadableException ex) {
+        log.warn("HttpMessageNotReadableException: {}", ex.getMessage());
+        return ResponseEntity.badRequest()
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 400,
+                        "error", "Solicitud invalida",
+                        "message", "El cuerpo de la solicitud es invalido o contiene valores no soportados"
                 ));
     }
 

@@ -10,6 +10,7 @@ import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
 import com.caa.api.models.Paciente;
+import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
@@ -117,6 +118,7 @@ class CartillaDetalleIntegrationTest {
                 .creador(terapeuta)
                 .nombre("Mi tablero")
                 .esPrincipal(true)
+                .paradigma(ParadigmaCartilla.ESQUEMATICA)
                 .build();
 
         categoria = Categoria.builder()
@@ -166,6 +168,7 @@ class CartillaDetalleIntegrationTest {
                 .andExpect(jsonPath("$.creadorId").value(terapeuta.getId().toString()))
                 .andExpect(jsonPath("$.nombre").value("Mi tablero"))
                 .andExpect(jsonPath("$.esPrincipal").value(true))
+                .andExpect(jsonPath("$.paradigma").value("esquematica"))
                 .andExpect(jsonPath("$.categorias[0].id").value(categoria.getId().toString()))
                 .andExpect(jsonPath("$.categorias[0].nombre").value("Acciones"))
                 .andExpect(jsonPath("$.categorias[0].colorHex").value("#00BFFF"))

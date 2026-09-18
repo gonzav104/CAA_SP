@@ -11,6 +11,7 @@ import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
 import com.caa.api.models.Paciente;
+import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.models.RolUsuario;
@@ -95,7 +96,7 @@ class CartillaServiceTest {
         given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
         given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartilla);
 
-        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", true);
+        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", true, null);
         CartillaResponseDTO response = cartillaService.crearCartilla(pacienteId, dto, "test@ejemplo.com");
 
         assertThat(response.nombre()).isEqualTo("Cartilla A");
@@ -129,7 +130,7 @@ class CartillaServiceTest {
         given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(familiar))).willReturn(paciente);
         given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartilla);
 
-        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla F", false);
+        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla F", false, null);
         CartillaResponseDTO response = cartillaService.crearCartilla(pacienteId, dto, "familiar@ejemplo.com");
 
         assertThat(response.nombre()).isEqualTo("Cartilla F");
@@ -153,7 +154,7 @@ class CartillaServiceTest {
         willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"))
                 .given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
 
-        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false);
+        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false, null);
 
         assertThatThrownBy(() -> cartillaService.crearCartilla(pacienteId, dto, "familiar@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
@@ -167,11 +168,49 @@ class CartillaServiceTest {
     void crear_usuarioInexistente_lanzaExcepcion() {
         given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
 
-        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false);
+        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false, null);
 
         assertThatThrownBy(() -> cartillaService.crearCartilla(pacienteId, dto, "nadie@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("Usuario no encontrado");
+    }
+
+    // ──────────────────────────────────────────────
+    //  CREAR — paradigma de organización del tablero
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Crear cartilla: sin paradigma explícito → default TAXONOMICA")
+    void crear_sinParadigma_defaultTaxonomica() {
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        willDoNothing().given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(cartillaRepository.save(any(Cartilla.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false, null);
+        cartillaService.crearCartilla(pacienteId, dto, "test@ejemplo.com");
+
+        ArgumentCaptor<Cartilla> captor = ArgumentCaptor.forClass(Cartilla.class);
+        verify(cartillaRepository).save(captor.capture());
+        assertThat(captor.getValue().getParadigma()).isEqualTo(ParadigmaCartilla.TAXONOMICA);
+    }
+
+    @Test
+    @DisplayName("Crear cartilla: con paradigma ESQUEMATICA explícito → se respeta")
+    void crear_conParadigmaEsquematica_seRespeta() {
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        willDoNothing().given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(cartillaRepository.save(any(Cartilla.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false, ParadigmaCartilla.ESQUEMATICA);
+        cartillaService.crearCartilla(pacienteId, dto, "test@ejemplo.com");
+
+        ArgumentCaptor<Cartilla> captor = ArgumentCaptor.forClass(Cartilla.class);
+        verify(cartillaRepository).save(captor.capture());
+        assertThat(captor.getValue().getParadigma()).isEqualTo(ParadigmaCartilla.ESQUEMATICA);
     }
 
     // ──────────────────────────────────────────────
@@ -202,12 +241,66 @@ class CartillaServiceTest {
                 .willReturn(Optional.of(cartilla));
         given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartillaActualizada);
 
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", true);
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", true, null);
 
         CartillaResponseDTO response = cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com");
 
         assertThat(response.nombre()).isEqualTo("Nombre nuevo");
         assertThat(response.esPrincipal()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Actualizar cartilla: paradigma omitido (null) → no se toca el valor existente")
+    void actualizar_sinParadigma_noTocaValorExistente() {
+        UUID cartillaId = UUID.randomUUID();
+        Cartilla cartilla = Cartilla.builder()
+                .id(cartillaId)
+                .paciente(paciente)
+                .creador(terapeuta)
+                .nombre("Nombre viejo")
+                .esPrincipal(false)
+                .paradigma(ParadigmaCartilla.ESQUEMATICA)
+                .build();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+                .willReturn(Optional.of(cartilla));
+        given(cartillaRepository.save(any(Cartilla.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", null, null);
+        cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com");
+
+        ArgumentCaptor<Cartilla> captor = ArgumentCaptor.forClass(Cartilla.class);
+        verify(cartillaRepository).save(captor.capture());
+        assertThat(captor.getValue().getParadigma()).isEqualTo(ParadigmaCartilla.ESQUEMATICA);
+    }
+
+    @Test
+    @DisplayName("Actualizar cartilla: paradigma explícito → sobrescribe el valor existente")
+    void actualizar_conParadigma_sobrescribeValorExistente() {
+        UUID cartillaId = UUID.randomUUID();
+        Cartilla cartilla = Cartilla.builder()
+                .id(cartillaId)
+                .paciente(paciente)
+                .creador(terapeuta)
+                .nombre("Nombre viejo")
+                .esPrincipal(false)
+                .paradigma(ParadigmaCartilla.TAXONOMICA)
+                .build();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+                .willReturn(Optional.of(cartilla));
+        given(cartillaRepository.save(any(Cartilla.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", null, ParadigmaCartilla.ESQUEMATICA);
+        cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com");
+
+        ArgumentCaptor<Cartilla> captor = ArgumentCaptor.forClass(Cartilla.class);
+        verify(cartillaRepository).save(captor.capture());
+        assertThat(captor.getValue().getParadigma()).isEqualTo(ParadigmaCartilla.ESQUEMATICA);
     }
 
     @Test
@@ -219,7 +312,7 @@ class CartillaServiceTest {
         given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
                 .willReturn(Optional.empty());
 
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nuevo nombre", false);
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nuevo nombre", false, null);
 
         assertThatThrownBy(() ->
                 cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
@@ -244,7 +337,7 @@ class CartillaServiceTest {
         given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiarId))
                 .willReturn(Optional.empty());
 
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false, null);
 
         assertThatThrownBy(() ->
                 cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "familiar@ejemplo.com"))
@@ -269,7 +362,7 @@ class CartillaServiceTest {
         given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiarId))
                 .willReturn(Optional.empty());
 
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false, null);
 
         assertThatThrownBy(() ->
                 cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "familiar@ejemplo.com"))
@@ -288,7 +381,7 @@ class CartillaServiceTest {
         given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
                 .willReturn(Optional.empty());
 
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false, null);
 
         assertThatThrownBy(() ->
                 cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
@@ -307,7 +400,7 @@ class CartillaServiceTest {
         given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
                 .willReturn(Optional.empty());
 
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false);
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false, null);
 
         assertThatThrownBy(() ->
                 cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
@@ -392,7 +485,7 @@ class CartillaServiceTest {
         given(cartillaRepository.save(cartillaDeA)).willReturn(cartillaDeA);
         given(cartillaRepository.save(cartillaDeB)).willReturn(cartillaDeB);
 
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Principal", true);
+        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Principal", true, null);
 
         CartillaResponseDTO r1 = cartillaService.actualizarCartilla(pacienteId, cartillaA, dto, "creadorA@ejemplo.com");
         CartillaResponseDTO r2 = cartillaService.actualizarCartilla(pacienteId, cartillaB, dto, "creadorB@ejemplo.com");
@@ -441,6 +534,7 @@ class CartillaServiceTest {
                 .creador(terapeuta)
                 .nombre("Cartilla A")
                 .esPrincipal(true)
+                .paradigma(ParadigmaCartilla.ESQUEMATICA)
                 .build();
 
         Categoria categoria = Categoria.builder()
@@ -496,6 +590,7 @@ class CartillaServiceTest {
         assertThat(detalle.creadorId()).isEqualTo(terapeutaId);
         assertThat(detalle.nombre()).isEqualTo("Cartilla A");
         assertThat(detalle.esPrincipal()).isTrue();
+        assertThat(detalle.paradigma()).isEqualTo(ParadigmaCartilla.ESQUEMATICA);
 
         assertThat(detalle.categorias()).hasSize(1);
         CategoriaDetalleResponseDTO catDto = detalle.categorias().get(0);
