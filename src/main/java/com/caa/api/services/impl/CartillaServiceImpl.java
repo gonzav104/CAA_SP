@@ -19,13 +19,14 @@ import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
-import com.caa.api.repositories.PictogramaCustomRepository;
-import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.CartillaService;
 import com.caa.api.services.PacienteService;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -40,8 +41,6 @@ public class CartillaServiceImpl implements CartillaService {
     private final UsuarioRepository usuarioRepository;
     private final CategoriaRepository categoriaRepository;
     private final ItemCartillaRepository itemCartillaRepository;
-    private final PictogramaGlobalRepository pictogramaGlobalRepository;
-    private final PictogramaCustomRepository pictogramaCustomRepository;
     private final PacienteService pacienteService;
 
     @Override
@@ -90,10 +89,26 @@ public class CartillaServiceImpl implements CartillaService {
         Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
-        List<CategoriaDetalleResponseDTO> categorias = categoriaRepository
-                .findByCartillaIdOrderByOrdenAsc(cartillaId)
-                .stream()
-                .map(this::toCategoriaDetalle)
+        List<Categoria> categorias = categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId);
+
+        Map<UUID, List<ItemDetalleResponseDTO>> itemsPorCategoria = new LinkedHashMap<>();
+        for (Categoria c : categorias) {
+            itemsPorCategoria.put(c.getId(), new ArrayList<>()); // categorías vacías sobreviven
+        }
+        if (!categorias.isEmpty()) { // evita un IN () innecesario
+            List<UUID> categoriaIds = categorias.stream().map(Categoria::getId).toList();
+            for (ItemCartilla item : itemCartillaRepository.findByCategoriaIdInOrderByOrdenVisualAsc(categoriaIds)) {
+                List<ItemDetalleResponseDTO> bucket = itemsPorCategoria.get(item.getCategoria().getId());
+                if (bucket != null) {
+                    bucket.add(toItemDetalle(item));
+                }
+            }
+        }
+
+        List<CategoriaDetalleResponseDTO> categoriasDto = categorias.stream()
+                .map(c -> new CategoriaDetalleResponseDTO(
+                        c.getId(), c.getNombre(), c.getColorHex(), c.getOrden(),
+                        itemsPorCategoria.get(c.getId())))
                 .toList();
 
         return new CartillaDetalleResponseDTO(
@@ -102,7 +117,7 @@ public class CartillaServiceImpl implements CartillaService {
                 cartilla.getNombre(),
                 cartilla.isEsPrincipal(),
                 cartilla.getParadigma(),
-                categorias
+                categoriasDto
         );
     }
 
@@ -155,22 +170,6 @@ public class CartillaServiceImpl implements CartillaService {
         );
     }
 
-    private CategoriaDetalleResponseDTO toCategoriaDetalle(Categoria categoria) {
-        List<ItemDetalleResponseDTO> items = itemCartillaRepository
-                .findByCategoriaIdOrderByOrdenVisualAsc(categoria.getId())
-                .stream()
-                .map(this::toItemDetalle)
-                .toList();
-
-        return new CategoriaDetalleResponseDTO(
-                categoria.getId(),
-                categoria.getNombre(),
-                categoria.getColorHex(),
-                categoria.getOrden(),
-                items
-        );
-    }
-
     private ItemDetalleResponseDTO toItemDetalle(ItemCartilla item) {
         return new ItemDetalleResponseDTO(
                 item.getId(),
@@ -181,17 +180,21 @@ public class CartillaServiceImpl implements CartillaService {
     }
 
     private PictogramaInfoDTO resolverPictograma(ItemCartilla item) {
-        if (item.getRecursoGlobal() != null) {
-            return pictogramaGlobalRepository.findById(item.getRecursoGlobal().getId())
-                    .map(g -> new PictogramaInfoDTO(g.getId(), g.getEtiqueta(), g.getImagenUrl(), "GLOBAL"))
-                    .orElse(null);
+        // El @EntityGraph de findByCategoriaIdInOrderByOrdenVisualAsc ya inicializó estas
+        // asociaciones al devolver la lista, así que se leen directo del proxy sin findById.
+        PictogramaGlobal global = item.getRecursoGlobal();
+        if (global != null) {
+            return new PictogramaInfoDTO(global.getId(), global.getEtiqueta(), global.getImagenUrl(), "GLOBAL");
         }
 
-        if (item.getRecursoCustom() != null) {
-            return pictogramaCustomRepository.findById(item.getRecursoCustom().getId())
-                    .map(c -> new PictogramaInfoDTO(c.getId(), c.getEtiqueta(), c.getImagenUrl(), "CUSTOM"))
-                    .orElse(null);
+        PictogramaCustom custom = item.getRecursoCustom();
+        if (custom != null) {
+            return new PictogramaInfoDTO(custom.getId(), custom.getEtiqueta(), custom.getImagenUrl(), "CUSTOM");
         }
+
+        // Rama defensiva: en producción es inalcanzable porque el CHECK check_origen_recurso
+        // (init.sql) y el XOR de resolverRecurso (tieneGlobal == tieneCustom → throw) impiden
+        // que un item quede sin ningún recurso asociado. Se conserva por defensa en profundidad.
 
         return null;
     }

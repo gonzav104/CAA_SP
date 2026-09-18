@@ -18,8 +18,6 @@ import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
 import com.caa.api.repositories.PacienteRepository;
-import com.caa.api.repositories.PictogramaGlobalRepository;
-import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
 import java.util.List;
@@ -71,12 +69,6 @@ class CartillaDetalleIntegrationTest {
 
     @MockitoBean
     private ItemCartillaRepository itemCartillaRepository;
-
-    @MockitoBean
-    private PictogramaGlobalRepository pictogramaGlobalRepository;
-
-    @MockitoBean
-    private PictogramaCustomRepository pictogramaCustomRepository;
 
     private MockMvc mockMvc;
     private String tokenValido;
@@ -156,10 +148,8 @@ class CartillaDetalleIntegrationTest {
                 .willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId))
                 .willReturn(List.of(categoria));
-        given(itemCartillaRepository.findByCategoriaIdOrderByOrdenVisualAsc(categoria.getId()))
+        given(itemCartillaRepository.findByCategoriaIdInOrderByOrdenVisualAsc(List.of(categoria.getId())))
                 .willReturn(List.of(item));
-        given(pictogramaGlobalRepository.findById(pictogramaGlobal.getId()))
-                .willReturn(Optional.of(pictogramaGlobal));
 
         mockMvc.perform(get("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaId)
                         .header("Authorization", "Bearer " + tokenValido))

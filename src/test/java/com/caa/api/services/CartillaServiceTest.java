@@ -19,8 +19,6 @@ import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
-import com.caa.api.repositories.PictogramaCustomRepository;
-import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.impl.CartillaServiceImpl;
 import java.util.List;
@@ -53,8 +51,6 @@ class CartillaServiceTest {
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private CategoriaRepository categoriaRepository;
     @Mock private ItemCartillaRepository itemCartillaRepository;
-    @Mock private PictogramaGlobalRepository pictogramaGlobalRepository;
-    @Mock private PictogramaCustomRepository pictogramaCustomRepository;
     @Mock private PacienteService pacienteService;
 
     @InjectMocks private CartillaServiceImpl cartillaService;
@@ -577,10 +573,8 @@ class CartillaServiceTest {
         given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId)).willReturn(List.of(categoria));
-        given(itemCartillaRepository.findByCategoriaIdOrderByOrdenVisualAsc(categoria.getId()))
+        given(itemCartillaRepository.findByCategoriaIdInOrderByOrdenVisualAsc(List.of(categoria.getId())))
                 .willReturn(List.of(itemGlobal, itemCustom));
-        given(pictogramaGlobalRepository.findById(global.getId())).willReturn(Optional.of(global));
-        given(pictogramaCustomRepository.findById(custom.getId())).willReturn(Optional.of(custom));
 
         CartillaDetalleResponseDTO detalle =
                 cartillaService.obtenerCartillaDetalle(pacienteId, cartillaId, "test@ejemplo.com");
@@ -611,8 +605,10 @@ class CartillaServiceTest {
     }
 
     @Test
-    @DisplayName("Detalle de cartilla → pictograma null cuando el recurso referenciado no existe")
-    void obtenerDetalle_recursoInexistente_pictogramaNull() {
+    @DisplayName("Detalle de cartilla → pictograma null cuando el item no tiene recurso asociado "
+            + "(cobertura de rama defensiva; check_origen_recurso + XOR de resolverRecurso hacen "
+            + "este estado inalcanzable en producción)")
+    void obtenerDetalle_itemSinRecursoAsociado_pictogramaNull() {
         UUID cartillaId = UUID.randomUUID();
 
         Cartilla cartilla = Cartilla.builder()
@@ -631,28 +627,19 @@ class CartillaServiceTest {
                 .orden(0)
                 .build();
 
-        // Item con recurso global cuyo id ya no existe en el repositorio
-        PictogramaGlobal globalPerdido = PictogramaGlobal.builder()
-                .id(UUID.randomUUID())
-                .etiqueta("Fantasma")
-                .imagenUrl("http://img/fantasma.png")
-                .build();
-
         ItemCartilla item = ItemCartilla.builder()
                 .id(UUID.randomUUID())
                 .categoria(categoria)
                 .textoHablado("Fantasma")
                 .ordenVisual(0)
-                .recursoGlobal(globalPerdido)
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
         given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId)).willReturn(List.of(categoria));
-        given(itemCartillaRepository.findByCategoriaIdOrderByOrdenVisualAsc(categoria.getId()))
+        given(itemCartillaRepository.findByCategoriaIdInOrderByOrdenVisualAsc(List.of(categoria.getId())))
                 .willReturn(List.of(item));
-        given(pictogramaGlobalRepository.findById(globalPerdido.getId())).willReturn(Optional.empty());
 
         CartillaDetalleResponseDTO detalle =
                 cartillaService.obtenerCartillaDetalle(pacienteId, cartillaId, "test@ejemplo.com");
