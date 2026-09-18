@@ -1,0 +1,15 @@
+# Artefactos de build locales: la imagen compila desde cero en el stage 1.
+target/
+
+# Secretos y config local: las variables se inyectan por entorno.
+.env
+
+# Metadata que no aporta al build.
+.git/
+.gitignore
+.gitattributes
+.idea/
+.atl/
+*.md
+docker-compose.yml
+Dockerfile

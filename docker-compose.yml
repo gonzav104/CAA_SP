@@ -1,18 +1,58 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
     container_name: caa_postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta la variable de entorno POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-caa_db}
+    # Mismo mecanismo que "api": env_file + format: raw. Compose interpola
+    # ${VAR} en "environment" y trunca en el primer "$" de un secreto (bug
+    # verificado). db y api deben recibir el mismo valor byte a byte.
+    # .env DEBE definir POSTGRES_USER, POSTGRES_PASSWORD y POSTGRES_DB
+    # explicitamente: sin "environment", la imagen de postgres solo tiene
+    # sus propios defaults (POSTGRES_DB = POSTGRES_USER, no "caa_db").
+    env_file:
+      - path: .env
+        required: true
+        format: raw
     ports:
       - "5444:5432"
     volumes:
       - db_data_final:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # "$$" escapa la interpolacion de compose: el shell dentro del
+      # contenedor expande las variables ya crudas (sin truncar).
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-postgres}\" -d \"$${POSTGRES_DB:-caa_db}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: caa_api
+    # Toda la configuracion sale de .env (unica fuente de verdad, sin duplicar
+    # defaults aca y en application.properties).
+    # format: raw desactiva la interpolacion de compose sobre los valores.
+    # Sin esto, un secreto que contenga "$" se trunca en silencio en el primer
+    # "$" y la app arranca con una clave incompleta (ej: JWT firmando mal).
+    env_file:
+      - path: .env
+        required: true
+        format: raw
+    environment:
+      # Unico override necesario en contenedor: dentro de la red de compose la
+      # base se alcanza por el nombre del service y su puerto interno, no por
+      # localhost:5444 (que seria el propio contenedor de la api).
+      DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-caa_db}
+      # Perfil de despliegue: deshabilita SpringDoc/Swagger (ver
+      # application-prod.properties). El host (./mvnw spring-boot:run) sigue
+      # sin perfil y mantiene Swagger activo.
+      SPRING_PROFILES_ACTIVE: prod
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
 
 volumes:
   db_data_final:
