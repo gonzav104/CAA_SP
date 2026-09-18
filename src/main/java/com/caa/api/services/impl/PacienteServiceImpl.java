@@ -3,6 +3,7 @@ package com.caa.api.services.impl;
 import com.caa.api.dtos.PacienteActualizacionDTO;
 import com.caa.api.dtos.PacienteRegistroDTO;
 import com.caa.api.dtos.PacienteResponseDTO;
+import com.caa.api.exceptions.AccesoDenegadoException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
@@ -30,6 +31,10 @@ public class PacienteServiceImpl implements PacienteService {
     public PacienteResponseDTO registrarPaciente(PacienteRegistroDTO dto, String emailTerapeuta) {
         Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
+
+        if (terapeuta.getRol() != RolUsuario.TERAPEUTA) {
+            throw new AccesoDenegadoException("Solo un terapeuta puede registrar un paciente");
+        }
 
         Paciente paciente = Paciente.builder()
                 .nombre(dto.nombre())
@@ -67,15 +72,17 @@ public class PacienteServiceImpl implements PacienteService {
                     .toList();
         } else if (usuario.getRol() == RolUsuario.FAMILIAR) {
             return pacienteFamiliarRepository.findByUsuario_Id(usuario.getId()).stream()
-                    .map(PacienteFamiliar::getPaciente)
-                    .map(p -> new PacienteResponseDTO(
-                            p.getId(),
-                            p.getNombre(),
-                            p.getApellido(),
-                            p.getFechaNacimiento(),
-                            p.getCreadoEn(),
-                            obtenerPermisoParaUsuario(p.getId(), usuario)
-                    ))
+                    .map(pf -> {
+                        Paciente p = pf.getPaciente();
+                        return new PacienteResponseDTO(
+                                p.getId(),
+                                p.getNombre(),
+                                p.getApellido(),
+                                p.getFechaNacimiento(),
+                                p.getCreadoEn(),
+                                pf.getPermiso()
+                        );
+                    })
                     .toList();
         }
 

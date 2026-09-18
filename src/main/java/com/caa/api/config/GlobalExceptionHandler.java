@@ -1,5 +1,6 @@
 package com.caa.api.config;
 
+import com.caa.api.exceptions.AccesoDenegadoException;
 import com.caa.api.exceptions.ConflictoException;
 import com.caa.api.exceptions.CredencialesInvalidasException;
 import com.caa.api.exceptions.DemasiadosIntentosException;
@@ -10,11 +11,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -125,6 +129,19 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(AccesoDenegadoException.class)
+    public ResponseEntity<Map<String, Object>> handleAccesoDenegado(
+            AccesoDenegadoException ex) {
+        log.warn("AccesoDenegadoException: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 403,
+                        "error", "Acceso denegado",
+                        "message", ex.getMessage()
+                ));
+    }
+
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<Map<String, Object>> handleMetodoNoSoportado(
             HttpRequestMethodNotSupportedException ex) {
@@ -145,6 +162,52 @@ public class GlobalExceptionHandler {
                         "status", 405,
                         "error", "Método no permitido",
                         "message", mensaje
+                ));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTipoParametroInvalido(
+            MethodArgumentTypeMismatchException ex) {
+        log.warn("MethodArgumentTypeMismatchException: parametro={}, mensaje={}",
+                ex.getName(), ex.getMessage());
+        return ResponseEntity.badRequest()
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 400,
+                        "error", "Solicitud invalida",
+                        "message", "Un parametro de la solicitud tiene un formato invalido"
+                ));
+    }
+
+    /**
+     * 409 genérico para violaciones de restricciones de integridad de datos (por
+     * ejemplo, una clave única duplicada detectada recién al confirmar el write).
+     * El mensaje al cliente nunca incluye nombre de constraint, columna, tabla ni
+     * fragmento SQL; la excepción completa se registra solo en el servidor.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleViolacionIntegridad(
+            DataIntegrityViolationException ex) {
+        log.error("DataIntegrityViolationException", ex);
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 409,
+                        "error", "Conflicto",
+                        "message", "La operacion viola una restriccion de datos existente"
+                ));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleRutaNoEncontrada(
+            NoResourceFoundException ex) {
+        log.warn("NoResourceFoundException: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 404,
+                        "error", "Recurso no encontrado",
+                        "message", "La ruta solicitada no existe"
                 ));
     }
 

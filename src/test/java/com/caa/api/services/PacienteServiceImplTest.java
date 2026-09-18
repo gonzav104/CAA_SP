@@ -3,6 +3,7 @@ package com.caa.api.services;
 import com.caa.api.dtos.PacienteActualizacionDTO;
 import com.caa.api.dtos.PacienteRegistroDTO;
 import com.caa.api.dtos.PacienteResponseDTO;
+import com.caa.api.exceptions.AccesoDenegadoException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
@@ -29,7 +30,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("PacienteServiceImpl — obtenerPaciente (GET /api/pacientes/{id})")
@@ -182,6 +186,35 @@ class PacienteServiceImplTest {
     }
 
     @Test
+    @DisplayName("registrarPaciente con rol FAMILIAR → 403 y no persiste")
+    void registrarPaciente_rolFamiliar_lanzaAccesoDenegadoYNoPersiste() {
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+
+        PacienteRegistroDTO dto = new PacienteRegistroDTO("Nico", "Perez", LocalDate.of(2020, 5, 10));
+
+        assertThatThrownBy(() -> pacienteService.registrarPaciente(dto, "familiar@ejemplo.com"))
+                .isInstanceOf(AccesoDenegadoException.class)
+                .hasMessageContaining("terapeuta");
+
+        verify(pacienteRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("registrarPaciente con rol TERAPEUTA → registra el paciente")
+    void registrarPaciente_rolTerapeuta_registraPaciente() {
+        given(usuarioRepository.findByEmail("terapeuta@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.save(any(Paciente.class))).willReturn(paciente);
+
+        PacienteRegistroDTO dto = new PacienteRegistroDTO("Nico", "Perez", LocalDate.of(2020, 5, 10));
+
+        PacienteResponseDTO resultado = pacienteService.registrarPaciente(dto, "terapeuta@ejemplo.com");
+
+        assertThat(resultado.id()).isEqualTo(pacienteId);
+        assertThat(resultado.nombre()).isEqualTo("Nico");
+        verify(pacienteRepository).save(any(Paciente.class));
+    }
+
+    @Test
     @DisplayName("actualizarPaciente con principal inexistente → 404 genérico \"Usuario no encontrado\"")
     void actualizarPaciente_principalInexistente_lanzaExcepcion() {
         given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
@@ -221,8 +254,6 @@ class PacienteServiceImplTest {
     void obtenerMisPacientes_familiar() {
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
         given(pacienteFamiliarRepository.findByUsuario_Id(familiarId)).willReturn(List.of(vinculo()));
-        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
-                .willReturn(Optional.of(vinculo()));
 
         List<PacienteResponseDTO> dtos = pacienteService.obtenerMisPacientes("familiar@ejemplo.com");
 
