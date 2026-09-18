@@ -4,8 +4,6 @@ API REST en **Java 21 / Spring Boot 4** que da soporte a la aplicación de CAA p
 
 Consumida por el frontend **CAA_SP_Front** (React 19 + TypeScript).
 
-> **Nota sobre versionado (importante).** El `.gitignore` del repo ignora `*.md` por decisión intencional (línea 39). **`README.md` es la ÚNICA excepción versionada** — se agregó con `git add -f` y queda trackeado; el resto de la documentación `.md` (auditorías, tasks, etc.) NO se versiona y se distribuye por fuera del repo. Detalle en [Salvedad sobre el .gitignore](#salvedad-sobre-el-gitignore).
-
 ---
 
 ## Tabla de contenidos
@@ -21,8 +19,7 @@ Consumida por el frontend **CAA_SP_Front** (React 19 + TypeScript).
 9. [Tests](#tests)
 10. [Despliegue (contenedores)](#despliegue-contenedores)
 11. [Contrato Front ↔ Back](#contrato-front--back)
-12. [Troubleshooting](#troubleshooting)
-13. [Salvedad sobre el .gitignore](#salvedad-sobre-el-gitignore)
+12. [Referencias](#referencias)
 
 ---
 
@@ -105,7 +102,7 @@ Controller  →  Service  →  Repository  →  Database
 
 ## Variables de entorno
 
-La app lee todo de variables de entorno (o del archivo `.env` local cargado por dotenv-java). **El `.env` está gitignored y nunca debe versionarse** (verificado: no existe en el historial de git).
+La app lee todo de variables de entorno (o del archivo `.env` local cargado por dotenv-java). **El `.env` está gitignored y nunca debe versionarse.**
 
 ### Inventario completo (19 variables)
 
@@ -170,8 +167,6 @@ La app lee todo de variables de entorno (o del archivo `.env` local cargado por 
 | 005 | `pictogramas_globales.arasaac_id` + UNIQUE (dedupe ARASAAC) |
 | 006 | `cartillas.paradigma` (TAXONOMICA / ESQUEMATICA, default `TAXONOMICA`) |
 
-> ⚠️ Limitación conocida: no hay Flyway/Liquibase ni script de migración por archivo; si una base existente necesita migrar, se aplica el bloque correspondiente manualmente. La suite de tests corre contra **H2**, por lo que `init.sql` **no se ejecuta** en los tests (el drift entidad↔SQL no se detecta automáticamente).
-
 ---
 
 ## API REST
@@ -190,8 +185,6 @@ Base URL: `http://localhost:8080` (dev). Prefijo de dominio: `/api/**`; autentic
 | `POST` | `/auth/logout` | — | Borra la cookie `jwt`. |
 | `POST` | `/api/usuarios/registro` | `{email, password, nombre, rol}` | Crea cuenta. **No setea cookie** (el front debe llevar al login). |
 | `GET` | `/api/usuarios/me` | — | Usuario autenticado actual. |
-
-> ⚠️ `rol` se elige en el registro (`TERAPEUTA` | `FAMILIAR`). Easter egg conocido: no hay acreditación de rol clínico — TERAPEUTA es auto-asignable. Decisión de producto pendiente antes de abrir el registro al público.
 
 ### Pacientes
 
@@ -235,7 +228,7 @@ Los familiares **no** ven sesiones (decisión de modelo).
 | `POST` | `/api/pictogramas-globales/materializar` | Autenticado | `{arasaacId, etiqueta}` → **201** si crea, **200** si ya existía (dedupe por `arasaac_id` UNIQUE). Idempotente. |
 | `GET` / `POST` | `/api/pacientes/{pacienteId}/pictogramas-custom` | Autenticado | `POST` es **multipart** (`etiqueta` + `archivo`) → sube a Cloudinary y persiste. |
 | `GET` / `PUT` | `.../pictogramas-custom/{id}` | Autenticado | Detalle / edición (multipart). |
-| `DELETE` | `.../pictogramas-custom/{id}` | **Solo terapeuta** | ⚠️ Asimetría conocida: POST/PUT permiten edición limitada del familiar, DELETE solo terapeuta. |
+| `DELETE` | `.../pictogramas-custom/{id}` | **Solo terapeuta** | El borrado de pictogramas custom es exclusivo del terapeuta. |
 
 ### Colaboradores (solo TERAPEUTA)
 
@@ -271,7 +264,6 @@ Todas las respuestas de error respetan el mismo shape:
 
 - **Dev** (sin perfil): Swagger UI en `http://localhost:8080/swagger-ui.html` y `GET /v3/api-docs`.
 - **Prod** (perfil `prod`): **deshabilitado** (`springdoc.api-docs.enabled=false`).
-- Statu quo: las anotaciones `@Operation`/`@Tag`/`@Schema` son mínimas (el OpenAPI generado es esquemático, sin botón Authorize).
 
 ---
 
@@ -311,16 +303,11 @@ Todo acceso a recursos anidados pasa por métodos del repositorio que filtran po
 
 ## Rendimiento
 
-Los dos flujos N+1 históricos están **aplanados y cubiertos por un test de regresión de conteo de queries**:
+Las consultas de corte pesado (detalle de cartilla con categorías + ítems + pictogramas, y el listado "mis pacientes" de un familiar) se resuelven en **consultas planas** con `@EntityGraph` y `IN` — sin loops N+1.
 
-| Flujo | Antes | Ahora | Guard |
-|---|---|---|---|
-| Detalle de cartilla (categorías + items + pictogramas) | ~59 queries (N+M) | 1 query con `IN` + `@EntityGraph` | `QueryCountRegressionIntegrationTest` |
-| "Mis pacientes" de un familiar | ~21 queries (2+2K) | 1 query con `@EntityGraph` | `QueryCountRegressionIntegrationTest` |
+**Regla de oro**: al tocar consultas JPA/relaciones/carga de entidades, revisar si se **introduce o empeora** un N+1.
 
-**Regla de oro**: al tocar consultas JPA/relaciones/carga de entidades, revisar si se **introduce o empeora** un N+1. El test de regresión fallará igualando deltas de PreparedStatement entre fixtures chico y grande — si va a verde con un N+1 nuevo, algo está mal.
-
-> Pendiente conocido: `spring.jpa.show-sql=true` está fijo en `application.properties` y OSIV (`open-in-view`) no está desactivado. Con los N+1 resueltos ya es seguro apagarlo (`spring.jpa.open-in-view=false`).
+**Guard automático**: `QueryCountRegressionIntegrationTest` cuenta PreparedStatement entre fixtures chico y grande y falla si los deltas se disparan — un N+1 nuevo rompe el test aunque los asserts de negocio sigan en verde.
 
 ---
 
@@ -334,7 +321,7 @@ Los dos flujos N+1 históricos están **aplanados y cubiertos por un test de reg
 **285 tests · 0 fallos · ~40 s** (estado 2026-09-18). Distribución: unitarios de servicios + DTOs + integración HTTP (MockMvc) + config.
 
 - Corren contra **H2 en memoria** (`ddl-auto=create-drop`); `init.sql` no se ejecuta en la suite.
-- Cubren casos límite: token vencido/firma inválida, 401 genérico, 429 idéntico en ambos endpoints rate-limited, errores sin fuga de secretos, ownership entre terapeutas, permiso de familiar coincidente con su vínculo, **regresión de conteo de queries**.
+- Cubren casos límite: token vencido/firma inválida, 401 genérico, 429 rate limit, errores sin fuga de secretos, ownership entre terapeutas, permiso de familiar coincidente con su vínculo, regresión de conteo de queries.
 - Convención: cada test con su propio email (cero flakiness), reloj inyectado en rate limit (sin sleeps).
 
 **Antes de modificar código**: localizar los tests relacionados, entender qué cubren y **no borrarlos** para hacer pasar el build. Después: correr los tests relevantes y `./mvnw test` si el cambio puede afectar otras áreas.
@@ -359,8 +346,6 @@ docker compose up -d --build     # levanta db + api
 | `.env` como única fuente | Ambos servicios usan `env_file` con `format: raw`. **Motivo**: Compose interpola `${VAR}` y trunca los valores en el primer `$` — un secreto con `$` llegaba incompleto en silencio. `format: raw` entrega el valor byte a byte. Requiere Compose ≥ 2.24 (verificado en v5.5.1). |
 | `application-prod.properties` | Deltas de producción: SpringDoc/Swagger **off** + `app.cookie.secure=true`. Se activa **solo** desde compose; en el host el perfil queda sin activar (Swagger disponible en dev). |
 
-> ⚠️ En un despliegue real faltan decisiones de entorno: TLS/HTTPS en el borde, gestión de secretos, `COOKIE_SECURE=true` fuera del perfil (si se despliega sin profile), HSTS, y rate limit multi-nodo. Revisar la sección [Salvedad sobre el .gitignore](#salvedad-sobre-el-gitignore) solo aplica a markdown: los secretos van en `.env`, jamás en este archivo.
-
 ### Requisitos de entorno para `docker compose up`
 
 - Docker Engine con **Compose V2 ≥ 2.24** (por el `env_file.format: raw`).
@@ -374,60 +359,10 @@ El frontend **CAA_SP_Front** (React 19) consume esta API con Axios (`withCredent
 
 - **Nunca** cambiar nombres de endpoints, métodos HTTP, nombres de campos JSON, tipos, códigos HTTP, mensajes de error o estructuras de respuesta sin revisar el impacto en el front.
 - Si un cambio de contrato es inevitable: documentar **qué cambia, por qué, qué consumidores afecta y qué se debe modificar en el front**.
-- Desviaciones conocidas en revisión: regex de password divergente (front ASCII vs back Unicode), gate de edición de pacientes ya corregido en el front, asimetría de DELETE en pictogramas custom (familiar ve el botón → 404).
-
-El análisis completo de contrato vive en `INFORME_AUDITORIA_Back.md` (local, no versionado — ver salvedad).
-
----
-
-## Troubleshooting
-
-| Síntoma | Causa probable | Solución |
-|---|---|---|
-| La app no arranca al correr en host | Falta `RESEND_API_KEY` (o `POSTGRES_PASSWORD`) en entorno/.env | Completar `.env`; `RESEND_API_KEY` no tiene default a propósito |
-| `docker compose up` falla o los secretos llegan truncados | Compose < 2.24, o `.env` sin valor real | Actualizar Compose; chequear que `.env` exista y tenga los valores completos |
-| Los emails de recupero nunca llegan | `RESEND_FROM_EMAIL` apuntando al sandbox `onboarding@resend.dev` o `FRONTEND_URL` en localhost | Dominio verificado en Resend + `FRONTEND_URL` real. Ver `ResendHealthCheck` en el log de arranque |
-| El front no puede llamar a la API (CORS) | Origen no en `CORS_ALLOWED_ORIGINS` | Setear la variable con el/los origen/es exacto/s del front |
-| Login OK pero la cookie no persiste en prod | Cookie sin `Secure` sobre HTTPS, o `Max-Age` no coincide con la expiración | `COOKIE_SECURE=true` (perfil prod lo hace); el Max-Age ya deriva de `jwt.expiration-ms` |
-| Git muestra archivos `.md` `modified` | Sin efecto: `*.md` está ignorado intencionalmente | Nada que hacer; ver salvedad |
-| Un detalle de cartilla responde lento | (Ya resuelto) — era N+1; si vuelve, `QueryCountRegressionIntegrationTest` lo atrapa | Correr `./mvnw test -Dtest=QueryCountRegressionIntegrationTest` |
-
----
-
-## Salvedad sobre el .gitignore
-
-El `.gitignore` del repo contiene, en la línea 39, el patrón `*.md` como **decisión intencional**:
-
-```gitignore
-# ... 
-*.md
-```
-
-**Implicaciones**:
-
-- **`README.md` SÍ se versiona** — es la única excepción a la regla: se agregó con `git add -f` y quedó trackeado (una vez en el repo, el `.gitignore` ya no lo afecta).
-- `INFORME_AUDITORIA_Back.md`, `tasks.md` y cualquier otro `.md` **no se versionan** (verificado: `git ls-files "*.md"` → solo `README.md`).
-- La documentación que no sea el README se distribuye por fuera del repo (compartida/copiada) o vive como comentario de código, de modo que el historial de git muestra exactamente un README y el resto queda fuera del control de versiones por decisión del proyecto.
-
-**Decisión tomada (septiembre 2026)**: se versiona `README.md` con la **Opción B** (`git add -f README.md`), sin tocar el `.gitignore`. El resto de los `.md` siguen ignorados.
-
-**Si en el futuro se decide versionar más documentación**, las opciones son:
-
-```bash
-# Opción A — excepción puntual en el .gitignore (recomendada si se quiere solo el README)
-# Agregar al final de .gitignore:
-# !README.md
-
-# Opción B — forzar el add (rompe la regla para ese archivo, sin tocar el gitignore)
-git add -f README.md
-```
-
-**La documentación no puede contener secretos ni datos sensibles tampoco en esta modalidad local**: los valores reales viven únicamente en `.env` (gitignored).
 
 ---
 
 ## Referencias
 
-- **Auditoría completa** (arq, seguridad, infra, contrato): `INFORME_AUDITORIA_Back.md` — local, no versionado.
 - **Reglas de trabajo del proyecto**: `CLAUDE.md` (convenciones: tareas pequeñas, tests, entidad↔init.sql, contrato front, control de alcance).
 - **Frontend**: repositorio `CAA_SP_Front` (React 19 + TypeScript).
