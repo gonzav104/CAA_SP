@@ -142,6 +142,7 @@ class CartillaDetalleIntegrationTest {
                 .textoHablado("Correr")
                 .ordenVisual(0)
                 .recursoGlobal(pictogramaGlobal)
+                .esCore(true)
                 .build();
 
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
@@ -165,9 +166,34 @@ class CartillaDetalleIntegrationTest {
                 .andExpect(jsonPath("$.categorias[0].orden").value(0))
                 .andExpect(jsonPath("$.categorias[0].items[0].textoHablado").value("Correr"))
                 .andExpect(jsonPath("$.categorias[0].items[0].ordenVisual").value(0))
+                .andExpect(jsonPath("$.categorias[0].items[0].esCore").value(true))
                 .andExpect(jsonPath("$.categorias[0].items[0].pictograma.tipo").value("GLOBAL"))
                 .andExpect(jsonPath("$.categorias[0].items[0].pictograma.etiqueta").value("Correr"))
                 .andExpect(jsonPath("$.categorias[0].items[0].pictograma.imagenUrl").value("http://img/correr.png"));
+    }
+
+    @Test
+    @DisplayName("GET detalle → item sin esCore explícito expone false (default/backfill)")
+    void getDetalle_itemSinEsCore_devuelveFalse() throws Exception {
+        ItemCartilla item = ItemCartilla.builder()
+                .id(UUID.randomUUID())
+                .categoria(categoria)
+                .textoHablado("Correr")
+                .ordenVisual(0)
+                .recursoGlobal(pictogramaGlobal)
+                .build(); // esCore queda en su default: false
+
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
+                .willReturn(Optional.of(cartilla));
+        given(categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId))
+                .willReturn(List.of(categoria));
+        given(itemCartillaRepository.findByCategoriaIdInOrderByOrdenVisualAsc(List.of(categoria.getId())))
+                .willReturn(List.of(item));
+
+        mockMvc.perform(get("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaId)
+                        .header("Authorization", "Bearer " + tokenValido))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categorias[0].items[0].esCore").value(false));
     }
 
     @Test

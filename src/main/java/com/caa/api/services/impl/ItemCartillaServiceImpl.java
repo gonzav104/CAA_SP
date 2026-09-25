@@ -63,6 +63,7 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
                 .ordenVisual(ordenVisual)
                 .recursoGlobal(recurso.global())
                 .recursoCustom(recurso.custom())
+                .esCore(dto.esCore() != null && dto.esCore())
                 .build();
 
         ItemCartilla guardado = itemCartillaRepository.save(item);
@@ -111,6 +112,9 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
         item.setTextoHablado(dto.textoHablado());
         if (dto.ordenVisual() != null) {
             item.setOrdenVisual(dto.ordenVisual());
+        }
+        if (dto.esCore() != null) {
+            item.setEsCore(dto.esCore());
         }
         item.setRecursoGlobal(recurso.global());
         item.setRecursoCustom(recurso.custom());
@@ -185,7 +189,8 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
                 i.getOrdenVisual(),
                 i.getRecursoGlobal() != null ? i.getRecursoGlobal().getId() : null,
                 i.getRecursoCustom() != null ? i.getRecursoCustom().getId() : null,
-                i.getCreadoEn()
+                i.getCreadoEn(),
+                i.isEsCore()
         );
     }
 

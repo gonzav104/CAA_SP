@@ -227,3 +227,18 @@ BEGIN
 END $$;
 
 ALTER TABLE cartillas ADD COLUMN IF NOT EXISTS paradigma paradigma_cartilla NOT NULL DEFAULT 'TAXONOMICA';
+
+-- ========================================================
+-- MIGRACIÓN 007 — items_cartilla.es_core (ítem "core" del tablero)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 006.
+-- Binario clínico: default FALSE; el core lo marca el terapeuta.
+-- Backfill = false: ningún ítem existente es core hasta que se marque explícitamente.
+-- ========================================================
+ALTER TABLE items_cartilla ADD COLUMN IF NOT EXISTS es_core BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ========================================================
+-- MIGRACIÓN 008 — pacientes.grid_size (tamaño de grilla del tablero en modo de uso)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 007.
+-- Columna nullable: ausencia = el tablero usa su grilla por defecto.
+-- ========================================================
+ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS grid_size INTEGER;

@@ -8,6 +8,7 @@ public record ItemCartillaActualizacionDTO(
         String textoHablado,
         Integer ordenVisual,
         UUID recursoGlobalId,
-        UUID recursoCustomId
+        UUID recursoCustomId,
+        Boolean esCore
 ) {
 }

@@ -49,6 +49,9 @@ public class ItemCartilla {
     @Column(name = "orden_visual", nullable = false)
     private int ordenVisual;
 
+    @Column(name = "es_core", nullable = false)
+    private boolean esCore;
+
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     @ManyToOne(fetch = FetchType.LAZY)

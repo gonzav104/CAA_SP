@@ -49,6 +49,9 @@ public class Paciente {
     @Column(name = "fecha_nacimiento", nullable = false)
     private LocalDate fechaNacimiento;
 
+    @Column(name = "grid_size")
+    private Integer gridSize;
+
     @CreationTimestamp
     @Column(name = "creado_en", nullable = false, updatable = false, columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private LocalDateTime creadoEn;

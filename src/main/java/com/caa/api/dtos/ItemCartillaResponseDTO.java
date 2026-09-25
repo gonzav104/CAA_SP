@@ -10,6 +10,7 @@ public record ItemCartillaResponseDTO(
         Integer ordenVisual,
         UUID recursoGlobalId,
         UUID recursoCustomId,
-        LocalDateTime creadoEn
+        LocalDateTime creadoEn,
+        Boolean esCore
 ) {
 }

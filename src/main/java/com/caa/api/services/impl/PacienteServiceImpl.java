@@ -50,7 +50,9 @@ public class PacienteServiceImpl implements PacienteService {
                 pacienteGuardado.getNombre(),
                 pacienteGuardado.getApellido(),
                 pacienteGuardado.getFechaNacimiento(),
-                pacienteGuardado.getCreadoEn()
+                pacienteGuardado.getCreadoEn(),
+                null,
+                pacienteGuardado.getGridSize()
         );
     }
 
@@ -67,7 +69,8 @@ public class PacienteServiceImpl implements PacienteService {
                             p.getApellido(),
                             p.getFechaNacimiento(),
                             p.getCreadoEn(),
-                            null
+                            null,
+                            p.getGridSize()
                     ))
                     .toList();
         } else if (usuario.getRol() == RolUsuario.FAMILIAR) {
@@ -80,7 +83,8 @@ public class PacienteServiceImpl implements PacienteService {
                                 p.getApellido(),
                                 p.getFechaNacimiento(),
                                 p.getCreadoEn(),
-                                pf.getPermiso()
+                                pf.getPermiso(),
+                                p.getGridSize()
                         );
                     })
                     .toList();
@@ -105,7 +109,8 @@ public class PacienteServiceImpl implements PacienteService {
                 paciente.getApellido(),
                 paciente.getFechaNacimiento(),
                 paciente.getCreadoEn(),
-                miPermiso
+                miPermiso,
+                paciente.getGridSize()
         );
     }
 
@@ -120,6 +125,9 @@ public class PacienteServiceImpl implements PacienteService {
         paciente.setNombre(dto.nombre());
         paciente.setApellido(dto.apellido());
         paciente.setFechaNacimiento(dto.fechaNacimiento());
+        if (dto.gridSize() != null) {
+            paciente.setGridSize(dto.gridSize());
+        }
 
         Paciente pacienteActualizado = pacienteRepository.save(paciente);
 
@@ -128,7 +136,9 @@ public class PacienteServiceImpl implements PacienteService {
                 pacienteActualizado.getNombre(),
                 pacienteActualizado.getApellido(),
                 pacienteActualizado.getFechaNacimiento(),
-                pacienteActualizado.getCreadoEn()
+                pacienteActualizado.getCreadoEn(),
+                null,
+                pacienteActualizado.getGridSize()
         );
     }
 

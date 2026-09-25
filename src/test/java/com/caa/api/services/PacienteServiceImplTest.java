@@ -31,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -219,7 +220,7 @@ class PacienteServiceImplTest {
     void actualizarPaciente_principalInexistente_lanzaExcepcion() {
         given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
 
-        PacienteActualizacionDTO dto = new PacienteActualizacionDTO("Nico", "Perez", LocalDate.of(2020, 5, 10));
+        PacienteActualizacionDTO dto = new PacienteActualizacionDTO("Nico", "Perez", LocalDate.of(2020, 5, 10), null);
 
         assertThatThrownBy(() -> pacienteService.actualizarPaciente(pacienteId, dto, "nadie@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
@@ -260,5 +261,80 @@ class PacienteServiceImplTest {
         assertThat(dtos).hasSize(1);
         assertThat(dtos.getFirst().id()).isEqualTo(pacienteId);
         assertThat(dtos.getFirst().miPermiso()).isEqualTo(PermisoColaborador.LECTURA);
+    }
+
+    // ──────────────────────────────────────────────
+    //  GRID_SIZE: PUT full-replace que CONSERVA si el campo no viene
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("actualizarPaciente con gridSize presente → actualiza la grilla")
+    void actualizarPaciente_conGridSize_actualiza() {
+        Paciente conGrid = Paciente.builder()
+                .id(pacienteId)
+                .terapeuta(terapeuta)
+                .nombre("Nico")
+                .apellido("Perez")
+                .fechaNacimiento(LocalDate.of(2020, 5, 10))
+                .gridSize(6)
+                .build();
+
+        given(usuarioRepository.findByEmail("terapeuta@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(conGrid));
+        given(pacienteRepository.save(any(Paciente.class))).willReturn(conGrid);
+
+        PacienteActualizacionDTO dto = new PacienteActualizacionDTO("Nico", "Perez", LocalDate.of(2020, 5, 10), 6);
+
+        PacienteResponseDTO response = pacienteService.actualizarPaciente(pacienteId, dto, "terapeuta@ejemplo.com");
+
+        verify(pacienteRepository).save(argThat(p -> p.getGridSize() != null && p.getGridSize().equals(6)));
+        assertThat(response.gridSize()).isEqualTo(6);
+    }
+
+    @Test
+    @DisplayName("actualizarPaciente sin gridSize (null) → CONSERVA la grilla existente")
+    void actualizarPaciente_sinGridSize_preserva() {
+        Paciente conGrid = Paciente.builder()
+                .id(pacienteId)
+                .terapeuta(terapeuta)
+                .nombre("Nico")
+                .apellido("Perez")
+                .fechaNacimiento(LocalDate.of(2020, 5, 10))
+                .gridSize(4)
+                .build();
+
+        given(usuarioRepository.findByEmail("terapeuta@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(conGrid));
+        given(pacienteRepository.save(any(Paciente.class))).willReturn(conGrid);
+
+        PacienteActualizacionDTO dto = new PacienteActualizacionDTO("Nico", "Perez", LocalDate.of(2020, 5, 10), null);
+
+        PacienteResponseDTO response = pacienteService.actualizarPaciente(pacienteId, dto, "terapeuta@ejemplo.com");
+
+        verify(pacienteRepository).save(argThat(p -> p.getGridSize() != null && p.getGridSize().equals(4)));
+        assertThat(response.gridSize()).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("obtenerPaciente → expone gridSize en la respuesta")
+    void obtenerPaciente_exponeGridSize() {
+        Paciente conGrid = Paciente.builder()
+                .id(pacienteId)
+                .terapeuta(terapeuta)
+                .nombre("Nico")
+                .apellido("Perez")
+                .fechaNacimiento(LocalDate.of(2020, 5, 10))
+                .gridSize(6)
+                .build();
+
+        given(usuarioRepository.findByEmail("terapeuta@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
+                .willReturn(Optional.of(conGrid));
+
+        PacienteResponseDTO response = pacienteService.obtenerPaciente(pacienteId, "terapeuta@ejemplo.com");
+
+        assertThat(response.gridSize()).isEqualTo(6);
     }
 }

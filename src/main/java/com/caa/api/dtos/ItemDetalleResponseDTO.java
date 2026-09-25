@@ -6,6 +6,7 @@ public record ItemDetalleResponseDTO(
         UUID id,
         String textoHablado,
         Integer ordenVisual,
-        PictogramaInfoDTO pictograma
+        PictogramaInfoDTO pictograma,
+        Boolean esCore
 ) {
 }
