@@ -52,6 +52,13 @@ public class ItemCartilla {
     @Column(name = "es_core", nullable = false)
     private boolean esCore;
 
+    @Column(name = "texto_visible", nullable = false, length = 30)
+    private String textoVisible;
+
+    @Builder.Default
+    @Column(name = "visible_en_modo_uso", nullable = false)
+    private boolean visibleEnModoUso = true;
+
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     @ManyToOne(fetch = FetchType.LAZY)

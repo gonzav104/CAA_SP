@@ -87,7 +87,7 @@ class ItemCartillaServiceTest {
                 .willReturn(Optional.empty());
 
         // Aunque el dto viole XOR (ambos null), el gate de creador gana
-        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, null, null);
+        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, null, null, null, null);
 
         assertThatThrownBy(() ->
                 itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com"))
@@ -116,7 +116,7 @@ class ItemCartillaServiceTest {
                 .ordenVisual(1).recursoGlobal(global).build();
         given(itemCartillaRepository.save(any(ItemCartilla.class))).willReturn(guardado);
 
-        ItemCartillaActualizacionDTO dto = new ItemCartillaActualizacionDTO("Hola", 1, globalId, null, null);
+        ItemCartillaActualizacionDTO dto = new ItemCartillaActualizacionDTO("Hola", 1, globalId, null, null, null, null);
 
         ItemCartillaResponseDTO response =
                 itemCartillaService.actualizarItem(pacienteId, cartillaId, categoriaId, itemId, dto, "test@ejemplo.com");
@@ -165,7 +165,7 @@ class ItemCartillaServiceTest {
     void crear_sinRecurso_lanzaXor() {
         prepararCreador();
 
-        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, null, null);
+        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, null, null, null, null);
 
         assertThatThrownBy(() ->
                 itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com"))
@@ -180,7 +180,7 @@ class ItemCartillaServiceTest {
     void crear_ambosRecursos_lanzaXor() {
         prepararCreador();
 
-        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, UUID.randomUUID(), UUID.randomUUID(), null);
+        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, UUID.randomUUID(), UUID.randomUUID(), null, null, null);
 
         assertThatThrownBy(() ->
                 itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com"))
@@ -202,7 +202,7 @@ class ItemCartillaServiceTest {
 
         given(pictogramaCustomRepository.findById(customId)).willReturn(Optional.of(custom));
 
-        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, customId, null);
+        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, customId, null, null, null);
 
         assertThatThrownBy(() ->
                 itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com"))
@@ -232,7 +232,7 @@ class ItemCartillaServiceTest {
                 .build();
         given(itemCartillaRepository.save(any(ItemCartilla.class))).willReturn(guardado);
 
-        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, globalId, null, null);
+        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, globalId, null, null, null, null);
 
         ItemCartillaResponseDTO response =
                 itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com");
@@ -249,7 +249,7 @@ class ItemCartillaServiceTest {
         prepararCreador();
 
         UUID customId = UUID.randomUUID();
-        PictogramaCustom custom = PictogramaCustom.builder().id(customId).paciente(paciente).build();
+        PictogramaCustom custom = PictogramaCustom.builder().id(customId).paciente(paciente).etiqueta("Foto").build();
         given(pictogramaCustomRepository.findById(customId)).willReturn(Optional.of(custom));
 
         ItemCartilla guardado = ItemCartilla.builder()
@@ -261,7 +261,7 @@ class ItemCartillaServiceTest {
                 .build();
         given(itemCartillaRepository.save(any(ItemCartilla.class))).willReturn(guardado);
 
-        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, customId, null);
+        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, customId, null, null, null);
 
         ItemCartillaResponseDTO response =
                 itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com");
@@ -293,7 +293,7 @@ class ItemCartillaServiceTest {
                 .build();
         given(itemCartillaRepository.save(any(ItemCartilla.class))).willReturn(guardado);
 
-        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, globalId, null, true);
+        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, globalId, null, true, null, null);
 
         ItemCartillaResponseDTO response =
                 itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com");
@@ -321,7 +321,7 @@ class ItemCartillaServiceTest {
                 .build();
         given(itemCartillaRepository.save(any(ItemCartilla.class))).willReturn(guardado);
 
-        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, globalId, null, null);
+        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, globalId, null, null, null, null);
 
         ItemCartillaResponseDTO response =
                 itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com");
@@ -348,7 +348,7 @@ class ItemCartillaServiceTest {
         ItemCartilla guardado = ItemCartilla.builder().id(itemId).categoria(categoria).esCore(false).build();
         given(itemCartillaRepository.save(any(ItemCartilla.class))).willReturn(guardado);
 
-        ItemCartillaActualizacionDTO dto = new ItemCartillaActualizacionDTO("Hola", 1, globalId, null, false);
+        ItemCartillaActualizacionDTO dto = new ItemCartillaActualizacionDTO("Hola", 1, globalId, null, false, null, null);
 
         itemCartillaService.actualizarItem(pacienteId, cartillaId, categoriaId, itemId, dto, "test@ejemplo.com");
 
@@ -373,11 +373,135 @@ class ItemCartillaServiceTest {
         ItemCartilla guardado = ItemCartilla.builder().id(itemId).categoria(categoria).esCore(true).build();
         given(itemCartillaRepository.save(any(ItemCartilla.class))).willReturn(guardado);
 
-        ItemCartillaActualizacionDTO dto = new ItemCartillaActualizacionDTO("Hola", 1, globalId, null, null);
+        ItemCartillaActualizacionDTO dto = new ItemCartillaActualizacionDTO("Hola", 1, globalId, null, null, null, null);
 
         itemCartillaService.actualizarItem(pacienteId, cartillaId, categoriaId, itemId, dto, "test@ejemplo.com");
 
         verify(itemCartillaRepository).save(argThat(ItemCartilla::isEsCore));
+    }
+
+    // ──────────────────────────────────────────────
+    //  TEXTO_VISIBLE / VISIBLE_EN_MODO_USO
+    // ──────────────────────────────────────────────
+
+    private PictogramaGlobal prepararGlobal(String etiqueta) {
+        UUID globalId = UUID.randomUUID();
+        PictogramaGlobal global = PictogramaGlobal.builder().id(globalId).etiqueta(etiqueta).build();
+        given(pictogramaGlobalRepository.findById(globalId)).willReturn(Optional.of(global));
+        return global;
+    }
+
+    private void guardarDevolviendoArgumento() {
+        given(itemCartillaRepository.save(any(ItemCartilla.class))).willAnswer(inv -> inv.getArgument(0));
+    }
+
+    private ItemCartillaResponseDTO crear(UUID globalId, UUID customId, String textoVisible, Boolean visible) {
+        ItemCartillaRegistroDTO dto =
+                new ItemCartillaRegistroDTO("Quiero ir al baño", 1, globalId, customId, null, textoVisible, visible);
+        return itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com");
+    }
+
+    @Test
+    @DisplayName("Crear con textoVisible explícito → se guarda recortado (trim)")
+    void crear_conTextoVisible_seGuardaTrimmeado() {
+        prepararCreador();
+        PictogramaGlobal global = prepararGlobal("Baño");
+        guardarDevolviendoArgumento();
+
+        ItemCartillaResponseDTO response = crear(global.getId(), null, "  BAÑO  ", null);
+
+        assertThat(response.textoVisible()).isEqualTo("BAÑO");
+        assertThat(response.textoHablado()).isEqualTo("Quiero ir al baño");
+    }
+
+    @Test
+    @DisplayName("Crear sin textoVisible → fallback a la etiqueta del pictograma global")
+    void crear_sinTextoVisible_fallbackEtiquetaGlobal() {
+        prepararCreador();
+        PictogramaGlobal global = prepararGlobal("  Baño ");
+        guardarDevolviendoArgumento();
+
+        ItemCartillaResponseDTO response = crear(global.getId(), null, null, null);
+
+        assertThat(response.textoVisible()).isEqualTo("Baño");
+    }
+
+    @Test
+    @DisplayName("Crear sin textoVisible → fallback a la etiqueta del pictograma custom, cortada a 30")
+    void crear_sinTextoVisible_fallbackEtiquetaCustomCortadaA30() {
+        prepararCreador();
+        UUID customId = UUID.randomUUID();
+        String etiquetaLarga = "A".repeat(40);
+        PictogramaCustom custom = PictogramaCustom.builder()
+                .id(customId).paciente(paciente).etiqueta(etiquetaLarga).build();
+        given(pictogramaCustomRepository.findById(customId)).willReturn(Optional.of(custom));
+        guardarDevolviendoArgumento();
+
+        ItemCartillaResponseDTO response = crear(null, customId, null, null);
+
+        assertThat(response.textoVisible()).isEqualTo("A".repeat(30));
+    }
+
+    @Test
+    @DisplayName("Crear: visibleEnModoUso null → true; explícito false → false")
+    void crear_visibleEnModoUso_defaultTrueYExplicitoFalse() {
+        prepararCreador();
+        PictogramaGlobal global = prepararGlobal("Baño");
+        guardarDevolviendoArgumento();
+
+        assertThat(crear(global.getId(), null, null, null).visibleEnModoUso()).isTrue();
+        assertThat(crear(global.getId(), null, null, false).visibleEnModoUso()).isFalse();
+    }
+
+    private ItemCartilla prepararActualizacion(String textoVisible, boolean visible) {
+        prepararCreador();
+        ItemCartilla item = ItemCartilla.builder().id(itemId).categoria(categoria)
+                .textoHablado("Hola").textoVisible(textoVisible).visibleEnModoUso(visible).build();
+        given(itemCartillaRepository.findByIdAndCategoriaId(itemId, categoriaId)).willReturn(Optional.of(item));
+        guardarDevolviendoArgumento();
+        return item;
+    }
+
+    @Test
+    @DisplayName("Actualizar con textoVisible y visibleEnModoUso null → conserva ambos valores")
+    void actualizar_conNulls_conservaValores() {
+        prepararActualizacion("BAÑO", false);
+        PictogramaGlobal global = prepararGlobal("Otro");
+
+        ItemCartillaResponseDTO response = itemCartillaService.actualizarItem(pacienteId, cartillaId, categoriaId,
+                itemId, new ItemCartillaActualizacionDTO("Hola", 1, global.getId(), null, null, null, null),
+                "test@ejemplo.com");
+
+        assertThat(response.textoVisible()).isEqualTo("BAÑO");
+        assertThat(response.visibleEnModoUso()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Actualizar con valores nuevos → cambia textoVisible (trim) y visibleEnModoUso")
+    void actualizar_conValores_loscambia() {
+        prepararActualizacion("BAÑO", false);
+        PictogramaGlobal global = prepararGlobal("Otro");
+
+        ItemCartillaResponseDTO response = itemCartillaService.actualizarItem(pacienteId, cartillaId, categoriaId,
+                itemId, new ItemCartillaActualizacionDTO("Hola", 1, global.getId(), null, null, "  COMER ", true),
+                "test@ejemplo.com");
+
+        assertThat(response.textoVisible()).isEqualTo("COMER");
+        assertThat(response.visibleEnModoUso()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Actualizar cambiando el pictograma → NO pisa textoVisible")
+    void actualizar_cambiandoPictograma_noPisaTextoVisible() {
+        ItemCartilla item = prepararActualizacion("BAÑO", true);
+        PictogramaGlobal nuevo = prepararGlobal("Etiqueta distinta");
+
+        ItemCartillaResponseDTO response = itemCartillaService.actualizarItem(pacienteId, cartillaId, categoriaId,
+                itemId, new ItemCartillaActualizacionDTO("Hola", 1, nuevo.getId(), null, null, null, null),
+                "test@ejemplo.com");
+
+        assertThat(item.getRecursoGlobal()).isSameAs(nuevo);
+        assertThat(response.textoVisible()).isEqualTo("BAÑO");
     }
 
     private void prepararCreador() {

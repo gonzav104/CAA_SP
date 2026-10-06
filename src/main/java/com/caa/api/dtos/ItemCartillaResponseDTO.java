@@ -11,6 +11,8 @@ public record ItemCartillaResponseDTO(
         UUID recursoGlobalId,
         UUID recursoCustomId,
         LocalDateTime creadoEn,
-        Boolean esCore
+        Boolean esCore,
+        String textoVisible,
+        Boolean visibleEnModoUso
 ) {
 }

@@ -7,6 +7,8 @@ public record ItemDetalleResponseDTO(
         String textoHablado,
         Integer ordenVisual,
         PictogramaInfoDTO pictograma,
-        Boolean esCore
+        Boolean esCore,
+        String textoVisible,
+        Boolean visibleEnModoUso
 ) {
 }

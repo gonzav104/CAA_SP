@@ -242,3 +242,24 @@ ALTER TABLE items_cartilla ADD COLUMN IF NOT EXISTS es_core BOOLEAN NOT NULL DEF
 -- Columna nullable: ausencia = el tablero usa su grilla por defecto.
 -- ========================================================
 ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS grid_size INTEGER;
+
+-- ========================================================
+-- MIGRACIÓN 009 — items_cartilla.texto_visible / visible_en_modo_uso
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 008.
+-- texto_visible: texto corto que se muestra bajo el pictograma (distinto de texto_hablado).
+-- Backfill de texto_visible: etiqueta del pictograma (global o custom) o, si no hay, texto_hablado,
+-- recortado a 30 caracteres. Luego se fuerza NOT NULL (re-ejecutar no tiene efecto).
+-- visible_en_modo_uso: permite ocultar una tarjeta sin borrarla; default TRUE.
+-- ========================================================
+ALTER TABLE items_cartilla ADD COLUMN IF NOT EXISTS texto_visible VARCHAR(30);
+
+UPDATE items_cartilla i
+SET texto_visible = LEFT(COALESCE(
+        (SELECT g.etiqueta FROM pictogramas_globales g WHERE g.id = i.recurso_global_id),
+        (SELECT c.etiqueta FROM pictogramas_custom c WHERE c.id = i.recurso_custom_id),
+        i.texto_hablado), 30)
+WHERE i.texto_visible IS NULL;
+
+ALTER TABLE items_cartilla ALTER COLUMN texto_visible SET NOT NULL;
+
+ALTER TABLE items_cartilla ADD COLUMN IF NOT EXISTS visible_en_modo_uso BOOLEAN NOT NULL DEFAULT TRUE;

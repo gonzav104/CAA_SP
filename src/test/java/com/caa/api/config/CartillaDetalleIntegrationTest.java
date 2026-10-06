@@ -143,6 +143,8 @@ class CartillaDetalleIntegrationTest {
                 .ordenVisual(0)
                 .recursoGlobal(pictogramaGlobal)
                 .esCore(true)
+                .textoVisible("CORRER")
+                .visibleEnModoUso(false)
                 .build();
 
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
@@ -167,6 +169,9 @@ class CartillaDetalleIntegrationTest {
                 .andExpect(jsonPath("$.categorias[0].items[0].textoHablado").value("Correr"))
                 .andExpect(jsonPath("$.categorias[0].items[0].ordenVisual").value(0))
                 .andExpect(jsonPath("$.categorias[0].items[0].esCore").value(true))
+                // Un item oculto en modo uso SÍ viaja en el detalle (el filtrado es del front)
+                .andExpect(jsonPath("$.categorias[0].items[0].textoVisible").value("CORRER"))
+                .andExpect(jsonPath("$.categorias[0].items[0].visibleEnModoUso").value(false))
                 .andExpect(jsonPath("$.categorias[0].items[0].pictograma.tipo").value("GLOBAL"))
                 .andExpect(jsonPath("$.categorias[0].items[0].pictograma.etiqueta").value("Correr"))
                 .andExpect(jsonPath("$.categorias[0].items[0].pictograma.imagenUrl").value("http://img/correr.png"));
@@ -181,7 +186,8 @@ class CartillaDetalleIntegrationTest {
                 .textoHablado("Correr")
                 .ordenVisual(0)
                 .recursoGlobal(pictogramaGlobal)
-                .build(); // esCore queda en su default: false
+                .textoVisible("Correr")
+                .build(); // esCore queda en su default: false; visibleEnModoUso en true
 
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
@@ -193,7 +199,8 @@ class CartillaDetalleIntegrationTest {
         mockMvc.perform(get("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaId)
                         .header("Authorization", "Bearer " + tokenValido))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.categorias[0].items[0].esCore").value(false));
+                .andExpect(jsonPath("$.categorias[0].items[0].esCore").value(false))
+                .andExpect(jsonPath("$.categorias[0].items[0].visibleEnModoUso").value(true));
     }
 
     @Test

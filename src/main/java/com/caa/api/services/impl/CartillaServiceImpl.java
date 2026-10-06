@@ -176,7 +176,9 @@ public class CartillaServiceImpl implements CartillaService {
                 item.getTextoHablado(),
                 item.getOrdenVisual(),
                 resolverPictograma(item),
-                item.isEsCore()
+                item.isEsCore(),
+                item.getTextoVisible(),
+                item.isVisibleEnModoUso()
         );
     }
 

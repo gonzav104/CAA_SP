@@ -326,7 +326,7 @@ class AccesoFamiliarServiceTest {
                     .ordenVisual(1).recursoGlobal(global).build();
             given(itemCartillaRepository.save(any(ItemCartilla.class))).willReturn(guardado);
 
-            ItemCartillaActualizacionDTO dto = new ItemCartillaActualizacionDTO("Hola", 1, globalId, null, null);
+            ItemCartillaActualizacionDTO dto = new ItemCartillaActualizacionDTO("Hola", 1, globalId, null, null, null, null);
             ItemCartillaResponseDTO response = itemCartillaService.actualizarItem(
                     pacienteId, cartillaId, categoriaId, itemId, dto, "familiar@ejemplo.com");
 

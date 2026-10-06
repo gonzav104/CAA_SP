@@ -36,6 +36,8 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     private final PictogramaCustomRepository pictogramaCustomRepository;
     private final PacienteService pacienteService;
 
+    private static final int TEXTO_VISIBLE_MAX = 30;
+
     @Override
     @Transactional
     public ItemCartillaResponseDTO crearItem(UUID pacienteId, UUID cartillaId, UUID categoriaId,
@@ -64,6 +66,8 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
                 .recursoGlobal(recurso.global())
                 .recursoCustom(recurso.custom())
                 .esCore(dto.esCore() != null && dto.esCore())
+                .textoVisible(resolverTextoVisible(dto.textoVisible(), recurso))
+                .visibleEnModoUso(dto.visibleEnModoUso() == null || dto.visibleEnModoUso())
                 .build();
 
         ItemCartilla guardado = itemCartillaRepository.save(item);
@@ -115,6 +119,13 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
         }
         if (dto.esCore() != null) {
             item.setEsCore(dto.esCore());
+        }
+        // null = conservar el valor actual; cambiar el pictograma no pisa textoVisible
+        if (dto.textoVisible() != null) {
+            item.setTextoVisible(dto.textoVisible().trim());
+        }
+        if (dto.visibleEnModoUso() != null) {
+            item.setVisibleEnModoUso(dto.visibleEnModoUso());
         }
         item.setRecursoGlobal(recurso.global());
         item.setRecursoCustom(recurso.custom());
@@ -173,6 +184,21 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
         return new RecursoResuelto(null, custom);
     }
 
+    /**
+     * Si no viene textoVisible, usa la etiqueta del pictograma ya resuelto (global o custom),
+     * sin espacios en los bordes y recortada a 30 caracteres.
+     */
+    private String resolverTextoVisible(String textoVisible, RecursoResuelto recurso) {
+        if (textoVisible != null) {
+            return textoVisible.trim();
+        }
+        String etiqueta = recurso.global() != null
+                ? recurso.global().getEtiqueta()
+                : recurso.custom().getEtiqueta();
+        String limpia = etiqueta.trim();
+        return limpia.length() > TEXTO_VISIBLE_MAX ? limpia.substring(0, TEXTO_VISIBLE_MAX) : limpia;
+    }
+
     private int siguienteOrdenVisual(UUID categoriaId) {
         List<ItemCartilla> existentes = itemCartillaRepository.findByCategoriaIdOrderByOrdenVisualAsc(categoriaId);
         return existentes.stream()
@@ -190,7 +216,9 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
                 i.getRecursoGlobal() != null ? i.getRecursoGlobal().getId() : null,
                 i.getRecursoCustom() != null ? i.getRecursoCustom().getId() : null,
                 i.getCreadoEn(),
-                i.isEsCore()
+                i.isEsCore(),
+                i.getTextoVisible(),
+                i.isVisibleEnModoUso()
         );
     }
 

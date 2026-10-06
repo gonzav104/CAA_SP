@@ -424,6 +424,7 @@ class QueryCountRegressionIntegrationTest {
         return itemCartillaRepository.save(ItemCartilla.builder()
                 .categoria(categoria)
                 .textoHablado(texto)
+                .textoVisible(texto)
                 .ordenVisual(ordenVisual)
                 .build());
     }
