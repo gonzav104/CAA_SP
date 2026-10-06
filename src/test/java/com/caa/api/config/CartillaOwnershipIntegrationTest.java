@@ -490,12 +490,12 @@ class CartillaOwnershipIntegrationTest {
     }
 
     // ──────────────────────────────────────────────
-    //  esPrincipal libre (sin unicidad por paciente)
+    //  esPrincipal único por paciente: solo el terapeuta responsable lo establece
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Dos creadores distintos marcan SU cartilla como principal → ambos 200 (sin unicidad)")
-    void dosCreadores_esPrincipalTrue_ambos200() throws Exception {
+    @DisplayName("Terapeuta responsable marca principal → 200; familiar con EDICION_LIMITADA intenta lo mismo → 403")
+    void soloTerapeutaResponsable_estableceLaPrincipal() throws Exception {
         UUID cartillaDelFamiliarId = UUID.randomUUID();
         Cartilla cartillaDelFamiliar = Cartilla.builder()
                 .id(cartillaDelFamiliarId).paciente(paciente).creador(familiarEdicion)
@@ -519,7 +519,6 @@ class CartillaOwnershipIntegrationTest {
                         .header("Authorization", "Bearer " + tokenFamiliarEdicion)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.esPrincipal").value(true));
+                .andExpect(status().isForbidden());
     }
 }

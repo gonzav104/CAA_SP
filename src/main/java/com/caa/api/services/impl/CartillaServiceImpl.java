@@ -7,6 +7,7 @@ import com.caa.api.dtos.CartillaResponseDTO;
 import com.caa.api.dtos.CategoriaDetalleResponseDTO;
 import com.caa.api.dtos.ItemDetalleResponseDTO;
 import com.caa.api.dtos.PictogramaInfoDTO;
+import com.caa.api.exceptions.AccesoDenegadoException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
@@ -15,6 +16,7 @@ import com.caa.api.models.Paciente;
 import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.PictogramaGlobal;
+import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
@@ -53,11 +55,21 @@ public class CartillaServiceImpl implements CartillaService {
         pacienteService.verificarEdicionParaUsuario(pacienteId, usuario);
         Paciente paciente = pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
 
+        boolean esPrincipal = Boolean.TRUE.equals(dto.esPrincipal());
+        if (esPrincipal) {
+            // Permiso ANTES de cualquier escritura: solo el terapeuta responsable fija la principal
+            exigirTerapeutaResponsable(usuario, paciente);
+            // ORDEN CRÍTICO: el UPDATE masivo debe llegar a la base ANTES de escribir la nueva
+            // principal. Si hubiera un INSERT pendiente, Hibernate lo vaciaría (auto-flush) antes
+            // del UPDATE sobre la misma tabla y el índice único parcial vería dos principales.
+            cartillaRepository.desmarcarPrincipalesDe(pacienteId);
+        }
+
         Cartilla cartilla = Cartilla.builder()
                 .paciente(paciente)
                 .creador(usuario)
                 .nombre(dto.nombre())
-                .esPrincipal(dto.esPrincipal() != null && dto.esPrincipal())
+                .esPrincipal(esPrincipal)
                 .paradigma(dto.paradigma() != null ? dto.paradigma() : ParadigmaCartilla.TAXONOMICA)
                 .build();
 
@@ -133,8 +145,24 @@ public class CartillaServiceImpl implements CartillaService {
                 .findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
+        // Solo un CAMBIO real del valor es una operación de configuración del paciente;
+        // reenviar el mismo valor no tiene efectos ni requiere permiso adicional.
+        boolean cambiaPrincipal = dto.esPrincipal() != null && dto.esPrincipal() != cartilla.isEsPrincipal();
+        if (cambiaPrincipal) {
+            // Permiso ANTES de cualquier escritura (fijar la principal o quitar la actual)
+            exigirTerapeutaResponsable(usuario, cartilla.getPaciente());
+            if (dto.esPrincipal()) {
+                // ORDEN CRÍTICO: desmarcar las otras ANTES de tocar la entidad gestionada (incluido
+                // setNombre) para que el flush posterior nunca escriba dos principales a la vez.
+                // Se excluye esta cartilla: si ya estuviera gestionada con esPrincipal = true, un
+                // UPDATE masivo que la incluyera la dejaría en false en la base sin que Hibernate
+                // detecte cambio alguno.
+                cartillaRepository.desmarcarOtrasPrincipalesDe(pacienteId, cartillaId);
+            }
+        }
+
         cartilla.setNombre(dto.nombre());
-        if (dto.esPrincipal() != null) {
+        if (cambiaPrincipal) {
             cartilla.setEsPrincipal(dto.esPrincipal());
         }
         if (dto.paradigma() != null) {
@@ -143,6 +171,34 @@ public class CartillaServiceImpl implements CartillaService {
 
         Cartilla actualizada = cartillaRepository.save(cartilla);
         return toResponseDTO(actualizada);
+    }
+
+    @Override
+    @Transactional
+    public CartillaResponseDTO establecerCartillaPrincipal(UUID pacienteId, UUID cartillaId, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
+
+        // 1) Acceso al paciente (terapeuta ajeno o familiar sin vínculo → 404)
+        Paciente paciente = pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
+        // 2) Solo el terapeuta responsable (un familiar vinculado → 403)
+        exigirTerapeutaResponsable(usuario, paciente);
+        // 3) La cartilla debe pertenecer al paciente, sin importar quién la creó
+        Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
+
+        // Idempotente: si ya es la principal no se escribe nada
+        if (cartilla.isEsPrincipal()) {
+            return toResponseDTO(cartilla);
+        }
+
+        // ORDEN CRÍTICO (igual que en actualizarCartilla): el UPDATE masivo se ejecuta de inmediato y
+        // debe llegar a la base ANTES de marcar esta cartilla, para que el índice único parcial
+        // nunca vea dos principales a la vez.
+        cartillaRepository.desmarcarOtrasPrincipalesDe(pacienteId, cartillaId);
+        cartilla.setEsPrincipal(true);
+
+        return toResponseDTO(cartillaRepository.save(cartilla));
     }
 
     @Override
@@ -157,6 +213,17 @@ public class CartillaServiceImpl implements CartillaService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
         cartillaRepository.delete(cartilla);
+    }
+
+    /** Solo el terapeuta responsable del paciente puede establecer o quitar la cartilla principal. */
+    private void exigirTerapeutaResponsable(Usuario usuario, Paciente paciente) {
+        boolean esResponsable = usuario.getRol() == RolUsuario.TERAPEUTA
+                && paciente.getTerapeuta() != null
+                && usuario.getId().equals(paciente.getTerapeuta().getId());
+        if (!esResponsable) {
+            throw new AccesoDenegadoException(
+                    "Solo el terapeuta responsable del paciente puede establecer la cartilla principal");
+        }
     }
 
     private CartillaResponseDTO toResponseDTO(Cartilla c) {

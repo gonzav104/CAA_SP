@@ -65,6 +65,16 @@ public class CartillaController {
         return ResponseEntity.ok(response);
     }
 
+    @PutMapping("/{cartillaId}/principal")
+    public ResponseEntity<CartillaResponseDTO> establecerCartillaPrincipal(
+            @PathVariable UUID pacienteId,
+            @PathVariable UUID cartillaId,
+            Principal principal) {
+        CartillaResponseDTO response = cartillaService.establecerCartillaPrincipal(
+                pacienteId, cartillaId, principal.getName());
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/{cartillaId}")
     public ResponseEntity<Void> eliminarCartilla(
             @PathVariable UUID pacienteId,

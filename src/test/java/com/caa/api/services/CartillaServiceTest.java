@@ -6,6 +6,7 @@ import com.caa.api.dtos.CartillaRegistroDTO;
 import com.caa.api.dtos.CartillaResponseDTO;
 import com.caa.api.dtos.CategoriaDetalleResponseDTO;
 import com.caa.api.dtos.ItemDetalleResponseDTO;
+import com.caa.api.exceptions.AccesoDenegadoException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -40,6 +42,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willDoNothing;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -453,41 +456,106 @@ class CartillaServiceTest {
     }
 
     // ──────────────────────────────────────────────
-    //  esPrincipal libre (sin unicidad)
+    //  esPrincipal único por paciente (permiso + orden de operaciones)
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Dos creadores distintos marcan su cartilla como principal → ambos OK (sin unicidad)")
-    void dosCreadores_esPrincipalTrue_ambosOK() {
-        UUID cartillaA = UUID.randomUUID();
-        UUID cartillaB = UUID.randomUUID();
-        UUID creadorAId = UUID.randomUUID();
-        UUID creadorBId = UUID.randomUUID();
-        Usuario creadorA = Usuario.builder()
-                .id(creadorAId).email("creadorA@ejemplo.com").rol(RolUsuario.TERAPEUTA).build();
-        Usuario creadorB = Usuario.builder()
-                .id(creadorBId).email("creadorB@ejemplo.com").rol(RolUsuario.TERAPEUTA).build();
-        Cartilla cartillaDeA = Cartilla.builder()
-                .id(cartillaA).paciente(paciente).creador(creadorA).nombre("A").esPrincipal(false).build();
-        Cartilla cartillaDeB = Cartilla.builder()
-                .id(cartillaB).paciente(paciente).creador(creadorB).nombre("B").esPrincipal(false).build();
+    @DisplayName("Actualizar a principal: terapeuta responsable → desmarca las otras ANTES de guardar")
+    void actualizar_terapeutaResponsable_desmarcaOtrasAntesDeGuardar() {
+        UUID cartillaId = UUID.randomUUID();
+        Cartilla cartilla = Cartilla.builder()
+                .id(cartillaId).paciente(paciente).creador(terapeuta).nombre("A").esPrincipal(false).build();
 
-        given(usuarioRepository.findByEmail("creadorA@ejemplo.com")).willReturn(Optional.of(creadorA));
-        given(usuarioRepository.findByEmail("creadorB@ejemplo.com")).willReturn(Optional.of(creadorB));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaA, pacienteId, creadorAId))
-                .willReturn(Optional.of(cartillaDeA));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaB, pacienteId, creadorBId))
-                .willReturn(Optional.of(cartillaDeB));
-        given(cartillaRepository.save(cartillaDeA)).willReturn(cartillaDeA);
-        given(cartillaRepository.save(cartillaDeB)).willReturn(cartillaDeB);
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+                .willReturn(Optional.of(cartilla));
+        given(cartillaRepository.save(cartilla)).willReturn(cartilla);
 
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Principal", true, null);
+        CartillaResponseDTO r = cartillaService.actualizarCartilla(
+                pacienteId, cartillaId, new CartillaActualizacionDTO("Principal", true, null), "test@ejemplo.com");
 
-        CartillaResponseDTO r1 = cartillaService.actualizarCartilla(pacienteId, cartillaA, dto, "creadorA@ejemplo.com");
-        CartillaResponseDTO r2 = cartillaService.actualizarCartilla(pacienteId, cartillaB, dto, "creadorB@ejemplo.com");
+        assertThat(r.esPrincipal()).isTrue();
+        InOrder orden = inOrder(cartillaRepository);
+        orden.verify(cartillaRepository).desmarcarOtrasPrincipalesDe(pacienteId, cartillaId);
+        orden.verify(cartillaRepository).save(cartilla);
+    }
 
-        assertThat(r1.esPrincipal()).isTrue();
-        assertThat(r2.esPrincipal()).isTrue();
+    @Test
+    @DisplayName("Actualizar a principal: creador que NO es el terapeuta responsable → 403 y sin escrituras")
+    void actualizar_creadorNoResponsable_accesoDenegado() {
+        UUID cartillaId = UUID.randomUUID();
+        UUID creadorId = UUID.randomUUID();
+        Usuario familiar = Usuario.builder()
+                .id(creadorId).email("familiar@ejemplo.com").rol(RolUsuario.FAMILIAR).build();
+        Cartilla cartilla = Cartilla.builder()
+                .id(cartillaId).paciente(paciente).creador(familiar).nombre("F").esPrincipal(false).build();
+
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, creadorId))
+                .willReturn(Optional.of(cartilla));
+
+        assertThatThrownBy(() -> cartillaService.actualizarCartilla(pacienteId, cartillaId,
+                new CartillaActualizacionDTO("Principal", true, null), "familiar@ejemplo.com"))
+                .isInstanceOf(AccesoDenegadoException.class)
+                .hasMessageContaining("Solo el terapeuta responsable");
+
+        verify(cartillaRepository, never()).desmarcarOtrasPrincipalesDe(any(), any());
+        verify(cartillaRepository, never()).save(any());
+        assertThat(cartilla.isEsPrincipal()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Actualizar sin cambiar esPrincipal (true sobre la principal / false sobre una común) → sin efectos")
+    void actualizar_sinCambioDePrincipal_noDesmarcaNada() {
+        UUID principalId = UUID.randomUUID();
+        UUID comunId = UUID.randomUUID();
+        Cartilla principal = Cartilla.builder()
+                .id(principalId).paciente(paciente).creador(terapeuta).nombre("P").esPrincipal(true).build();
+        Cartilla comun = Cartilla.builder()
+                .id(comunId).paciente(paciente).creador(terapeuta).nombre("C").esPrincipal(false).build();
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(principalId, pacienteId, terapeutaId))
+                .willReturn(Optional.of(principal));
+        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(comunId, pacienteId, terapeutaId))
+                .willReturn(Optional.of(comun));
+        given(cartillaRepository.save(any(Cartilla.class))).willAnswer(i -> i.getArgument(0));
+
+        cartillaService.actualizarCartilla(
+                pacienteId, principalId, new CartillaActualizacionDTO("P2", true, null), "test@ejemplo.com");
+        cartillaService.actualizarCartilla(
+                pacienteId, comunId, new CartillaActualizacionDTO("C2", false, null), "test@ejemplo.com");
+
+        verify(cartillaRepository, never()).desmarcarOtrasPrincipalesDe(any(), any());
+        assertThat(principal.isEsPrincipal()).isTrue();
+        assertThat(comun.isEsPrincipal()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Crear con esPrincipal=true: desmarca las principales ANTES de guardar; familiar → 403")
+    void crear_principal_desmarcaAntesDeGuardar_yFamiliarDenegado() {
+        UUID familiarId = UUID.randomUUID();
+        Usuario familiar = Usuario.builder()
+                .id(familiarId).email("familiar@ejemplo.com").rol(RolUsuario.FAMILIAR).build();
+
+        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(familiar))).willReturn(paciente);
+
+        assertThatThrownBy(() -> cartillaService.crearCartilla(
+                pacienteId, new CartillaRegistroDTO("X", true, null), "familiar@ejemplo.com"))
+                .isInstanceOf(AccesoDenegadoException.class);
+        verify(cartillaRepository, never()).desmarcarPrincipalesDe(any());
+        verify(cartillaRepository, never()).save(any());
+
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(cartillaRepository.save(any(Cartilla.class))).willAnswer(i -> i.getArgument(0));
+
+        cartillaService.crearCartilla(pacienteId, new CartillaRegistroDTO("P", true, null), "test@ejemplo.com");
+
+        InOrder orden = inOrder(cartillaRepository);
+        orden.verify(cartillaRepository).desmarcarPrincipalesDe(pacienteId);
+        orden.verify(cartillaRepository).save(any(Cartilla.class));
     }
 
     // ──────────────────────────────────────────────
@@ -662,5 +730,63 @@ class CartillaServiceTest {
         assertThatThrownBy(() -> cartillaService.obtenerCartillaDetalle(pacienteId, cartillaId, "test@ejemplo.com"))
                 .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("no tiene permisos");
+    }
+
+    // ──────────────────────────────────────────────
+    //  ESTABLECER CARTILLA PRINCIPAL (PUT /{cartillaId}/principal)
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("establecerCartillaPrincipal: ya es la principal → devuelve el DTO SIN escribir nada (idempotente)")
+    void establecerCartillaPrincipal_yaPrincipal_noEscribe() {
+        UUID cartillaId = UUID.randomUUID();
+        Cartilla cartilla = Cartilla.builder().id(cartillaId).paciente(paciente).creador(terapeuta)
+                .nombre("A").esPrincipal(true).build();
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, terapeuta)).willReturn(paciente);
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
+
+        CartillaResponseDTO r = cartillaService.establecerCartillaPrincipal(pacienteId, cartillaId, "test@ejemplo.com");
+
+        assertThat(r.id()).isEqualTo(cartillaId);
+        assertThat(r.esPrincipal()).isTrue();
+        verify(cartillaRepository, never()).desmarcarOtrasPrincipalesDe(any(), any());
+        verify(cartillaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("establecerCartillaPrincipal: desmarca las otras ANTES de marcar y guardar la elegida")
+    void establecerCartillaPrincipal_desmarcaAntesDeGuardar() {
+        UUID cartillaId = UUID.randomUUID();
+        Cartilla cartilla = Cartilla.builder().id(cartillaId).paciente(paciente).creador(terapeuta)
+                .nombre("B").esPrincipal(false).build();
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, terapeuta)).willReturn(paciente);
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
+        given(cartillaRepository.save(any(Cartilla.class))).willAnswer(i -> i.getArgument(0));
+
+        CartillaResponseDTO r = cartillaService.establecerCartillaPrincipal(pacienteId, cartillaId, "test@ejemplo.com");
+
+        assertThat(r.esPrincipal()).isTrue();
+        InOrder orden = inOrder(cartillaRepository);
+        orden.verify(cartillaRepository).desmarcarOtrasPrincipalesDe(pacienteId, cartillaId);
+        orden.verify(cartillaRepository).save(cartilla);
+    }
+
+    @Test
+    @DisplayName("establecerCartillaPrincipal: un familiar vinculado → AccesoDenegadoException y no toca la base")
+    void establecerCartillaPrincipal_familiar_403() {
+        Usuario familiar = Usuario.builder().id(UUID.randomUUID()).email("f@ejemplo.com")
+                .rol(RolUsuario.FAMILIAR).build();
+        UUID cartillaId = UUID.randomUUID();
+        given(usuarioRepository.findByEmail("f@ejemplo.com")).willReturn(Optional.of(familiar));
+        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar)).willReturn(paciente);
+
+        assertThatThrownBy(() -> cartillaService.establecerCartillaPrincipal(pacienteId, cartillaId, "f@ejemplo.com"))
+                .isInstanceOf(AccesoDenegadoException.class)
+                .hasMessageContaining("Solo el terapeuta responsable");
+        verify(cartillaRepository, never()).findByIdAndPacienteId(any(), any());
+        verify(cartillaRepository, never()).desmarcarOtrasPrincipalesDe(any(), any());
+        verify(cartillaRepository, never()).save(any());
     }
 }

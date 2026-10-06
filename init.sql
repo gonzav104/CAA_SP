@@ -263,3 +263,31 @@ WHERE i.texto_visible IS NULL;
 ALTER TABLE items_cartilla ALTER COLUMN texto_visible SET NOT NULL;
 
 ALTER TABLE items_cartilla ADD COLUMN IF NOT EXISTS visible_en_modo_uso BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- ========================================================
+-- MIGRACIÓN 010 — cartillas: una sola cartilla principal por paciente
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 009.
+-- (1) Normalización: si un paciente tiene más de una cartilla con es_principal = TRUE,
+--     se conserva la MÁS ANTIGUA (creado_en; id como desempate determinista) y el resto
+--     pasa a FALSE. Escrita sin UPDATE ... FROM para que sea portable (PostgreSQL y H2).
+--     DEBE ejecutarse ANTES de crear el índice, o la creación fallaría con duplicados.
+--     Re-ejecutarla no tiene efecto: sin duplicados no actualiza ninguna fila.
+-- (2) Índice único parcial: a lo sumo una fila con es_principal = TRUE por paciente.
+--     Es la última línea de defensa ante carreras entre requests concurrentes;
+--     el servicio ya desmarca la principal anterior dentro de la misma transacción.
+-- ========================================================
+UPDATE cartillas
+SET es_principal = FALSE
+WHERE es_principal
+  AND id IN (
+      SELECT id FROM (
+          SELECT id,
+                 ROW_NUMBER() OVER (PARTITION BY paciente_id ORDER BY creado_en ASC NULLS LAST, id ASC) AS rn
+          FROM cartillas
+          WHERE es_principal
+      ) ranked
+      WHERE ranked.rn > 1
+  );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cartillas_una_principal_por_paciente
+    ON cartillas (paciente_id) WHERE es_principal;

@@ -12,5 +12,6 @@ public interface CartillaService {
     List<CartillaResponseDTO> obtenerCartillasDePaciente(UUID pacienteId, String emailTerapeuta);
     CartillaDetalleResponseDTO obtenerCartillaDetalle(UUID pacienteId, UUID cartillaId, String email);
     CartillaResponseDTO actualizarCartilla(UUID pacienteId, UUID cartillaId, CartillaActualizacionDTO dto, String emailTerapeuta);
+    CartillaResponseDTO establecerCartillaPrincipal(UUID pacienteId, UUID cartillaId, String emailTerapeuta);
     void eliminarCartilla(UUID pacienteId, UUID cartillaId, String emailTerapeuta);
 }
