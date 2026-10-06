@@ -1,5 +1,6 @@
 package com.caa.api.config;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,6 +17,7 @@ import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -193,6 +195,37 @@ class PictogramaGlobalMaterializarIntegrationTest {
                                 Map.of("arasaacId", ARASAAC_ID_NUEVO)))
                         .header("Authorization", "Bearer " + tokenValido))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST materializar SIN arasaacId → 400 (validación @NotNull) y no persiste nada")
+    void materializar_sinArasaacId_devuelve400SinPersistir() throws Exception {
+        mockMvc.perform(post("/api/pictogramas-globales/materializar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("etiqueta", "x")))
+                        .header("Authorization", "Bearer " + tokenValido))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("arasaacId")));
+
+        verify(pictogramaGlobalRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("POST materializar con arasaacId null → 400 (validación @NotNull) y no persiste nada")
+    void materializar_arasaacIdNull_devuelve400SinPersistir() throws Exception {
+        Map<String, Object> cuerpo = new HashMap<>();
+        cuerpo.put("arasaacId", null);
+        cuerpo.put("etiqueta", "x");
+
+        mockMvc.perform(post("/api/pictogramas-globales/materializar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(cuerpo))
+                        .header("Authorization", "Bearer " + tokenValido))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("arasaacId")));
+
+        verify(pictogramaGlobalRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
