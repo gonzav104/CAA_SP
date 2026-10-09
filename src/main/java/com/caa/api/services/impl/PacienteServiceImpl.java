@@ -10,7 +10,6 @@ import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteTerapeuta;
 import com.caa.api.models.PacienteTerapeutaId;
 import com.caa.api.models.PermisoColaborador;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.MembresiaRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
@@ -192,58 +191,23 @@ public class PacienteServiceImpl implements PacienteService {
     }
 
     /**
-     * BLOQUEADO de nuevo, NO un olvido (apply session 2026-10-09, continuación de Fase 3):
-     * {@code CartillaServiceImpl} y los demás llamadores de Fase 3 ya migraron (tareas 3.1-3.5,
-     * ver {@code apply-progress}); {@code PictogramaCustomServiceImpl} también migró a llamar
-     * {@code AccesoService.exigirCapacidad(...)} DIRECTAMENTE (sin pasar por esta fachada), así
-     * que ESTE método ya no tiene ningún llamador en {@code src/main}. Migrarlo de todas formas
-     * (como pide design-part2 §11.1) rompe
-     * {@code AccesoFamiliarServiceTest.PacienteHelperTest}: esa clase anidada usa
-     * {@code @InjectMocks PacienteServiceImpl} con mocks directos de {@code PacienteRepository}/
-     * {@code PacienteFamiliarRepository} (sin mock de {@code AccesoService}), así que delegar a
-     * {@code accesoService.exigirCapacidad(...)} causaría un {@code NullPointerException} en sus
-     * 5 tests. {@code AccesoFamiliarServiceTest.java} NO está en el "Allowed edit surfaces" de
-     * esta sesión (solo {@code PictogramaCustomIntegrationTest.java} fue añadido). Reportado como
-     * blocker nuevo en vez de ampliar el alcance en silencio; ver {@code apply-progress} para el
-     * detalle completo. Próxima acción: añadir {@code AccesoFamiliarServiceTest.java} al edit
-     * surface de una futura sesión para terminar esta migración (o decidir eliminar este método
-     * de la interfaz, ya que ya no tiene llamadores de producción).
+     * Fachada reutilizable (design-part2 §11.1): delega en
+     * {@code AccesoService.exigirCapacidad(LEER)}. Sin producción propia en {@code src/main} desde
+     * que {@code CartillaServiceImpl}, {@code PictogramaCustomServiceImpl} y los demás llamadores
+     * de Fase 3 migraron a llamar {@code AccesoService} directamente, pero se mantiene en la
+     * interfaz como fachada reutilizable para futuros llamadores (Fase 4+), no se elimina.
      */
     @Override
+    @Transactional(readOnly = true)
     public Paciente pacienteLegibleParaUsuario(UUID pacienteId, Usuario usuario) {
-        if (usuario.getRol() == RolUsuario.TERAPEUTA) {
-            return pacienteDelTerapeuta(pacienteId, usuario.getId());
-        } else if (usuario.getRol() == RolUsuario.FAMILIAR) {
-            return pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, usuario.getId())
-                    .map(PacienteFamiliar::getPaciente)
-                    .orElseThrow(() -> new RecursoNoEncontradoException(
-                            "Paciente no encontrado o no tiene permisos"));
-        }
-        throw new RecursoNoEncontradoException("Rol desconocido");
+        return accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER).paciente();
     }
 
-    /** BLOQUEADO de nuevo: ver el javadoc de {@link #pacienteLegibleParaUsuario}. */
+    /** Fachada reutilizable (ver {@link #pacienteLegibleParaUsuario}): exige {@code EDITAR_CONTENIDO}. */
     @Override
+    @Transactional(readOnly = true)
     public void verificarEdicionParaUsuario(UUID pacienteId, Usuario usuario) {
-        if (usuario.getRol() == RolUsuario.TERAPEUTA) {
-            pacienteDelTerapeuta(pacienteId, usuario.getId());
-        } else if (usuario.getRol() == RolUsuario.FAMILIAR) {
-            PermisoColaborador permiso = pacienteFamiliarRepository
-                    .findByPaciente_IdAndUsuario_Id(pacienteId, usuario.getId())
-                    .map(PacienteFamiliar::getPermiso)
-                    .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
-            if (permiso != PermisoColaborador.EDICION_LIMITADA) {
-                throw new RecursoNoEncontradoException(
-                        "Paciente no encontrado o no tiene permisos");
-            }
-        } else {
-            throw new RecursoNoEncontradoException("Rol desconocido");
-        }
-    }
-
-    private Paciente pacienteDelTerapeuta(UUID pacienteId, UUID terapeutaId) {
-        return pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
     }
 
     private PacienteResponseDTO toResponseDTO(Paciente p, PermisoColaborador miPermiso) {

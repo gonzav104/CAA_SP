@@ -8,8 +8,6 @@ import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
 import com.caa.api.models.Paciente;
-import com.caa.api.models.PacienteFamiliar;
-import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.models.RolUsuario;
@@ -17,8 +15,6 @@ import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
-import com.caa.api.repositories.PacienteFamiliarRepository;
-import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -65,15 +61,11 @@ class AccesoFamiliarServiceTest {
     @DisplayName("PacienteServiceImpl — helper de acceso")
     class PacienteHelperTest {
 
-        @Mock PacienteRepository pacienteRepository;
-        @Mock UsuarioRepository usuarioRepository;
-        @Mock PacienteFamiliarRepository pacienteFamiliarRepository;
+        @Mock AccesoService accesoService;
 
         @InjectMocks PacienteServiceImpl pacienteService;
 
         private UUID pacienteId;
-        private UUID terapeutaId;
-        private UUID familiarId;
         private Usuario terapeuta;
         private Usuario familiar;
         private Paciente paciente;
@@ -81,38 +73,28 @@ class AccesoFamiliarServiceTest {
         @BeforeEach
         void setUp() {
             pacienteId = UUID.randomUUID();
-            terapeutaId = UUID.randomUUID();
-            familiarId = UUID.randomUUID();
-            terapeuta = Usuario.builder().id(terapeutaId).rol(RolUsuario.TERAPEUTA).build();
-            familiar = Usuario.builder().id(familiarId).rol(RolUsuario.FAMILIAR).build();
+            terapeuta = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.TERAPEUTA).build();
+            familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
             paciente = Paciente.builder().id(pacienteId).terapeuta(terapeuta).build();
         }
 
-        private PacienteFamiliar vinculo(PermisoColaborador permiso) {
-            return PacienteFamiliar.builder()
-                    .id(new PacienteFamiliarId(pacienteId, familiarId))
-                    .paciente(paciente)
-                    .usuario(familiar)
-                    .permiso(permiso)
-                    .build();
-        }
-
         @Test
-        @DisplayName("Terapeuta dueño → lee el paciente")
+        @DisplayName("Terapeuta dueño → lee el paciente (delega en AccesoService.exigirCapacidad(LEER))")
         void terapeutaVeSuPaciente() {
-            given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
-                    .willReturn(Optional.of(paciente));
+            given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER))
+                    .willReturn(new AccesoPaciente(paciente, null, false, null));
 
             Paciente resultado = pacienteService.pacienteLegibleParaUsuario(pacienteId, terapeuta);
 
             assertThat(resultado.getId()).isEqualTo(pacienteId);
+            verify(accesoService).exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER);
         }
 
         @Test
         @DisplayName("Familiar vinculado → lee el paciente")
         void familiarVinculadoPuedeLeer() {
-            given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
-                    .willReturn(Optional.of(vinculo(PermisoColaborador.LECTURA)));
+            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
+                    .willReturn(new AccesoPaciente(paciente, null, false, PermisoColaborador.LECTURA));
 
             Paciente resultado = pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar);
 
@@ -120,10 +102,10 @@ class AccesoFamiliarServiceTest {
         }
 
         @Test
-        @DisplayName("Familiar sin vínculo → RecursoNoEncontradoException")
+        @DisplayName("Familiar sin vínculo → RecursoNoEncontradoException (propagada desde AccesoService)")
         void familiarSinVinculoNoPuedeLeer() {
-            given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
-                    .willReturn(Optional.empty());
+            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
+                    .willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
             assertThatThrownBy(() -> pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar))
                     .isInstanceOf(RecursoNoEncontradoException.class)
@@ -133,8 +115,10 @@ class AccesoFamiliarServiceTest {
         @Test
         @DisplayName("Familiar con LECTURA puede leer pero NO editar")
         void familiarLecturaNoPuedeEditar() {
-            given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
-                    .willReturn(Optional.of(vinculo(PermisoColaborador.LECTURA)));
+            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
+                    .willReturn(new AccesoPaciente(paciente, null, false, PermisoColaborador.LECTURA));
+            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
+                    .willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
             // Lee: ok
             assertThatCode(() -> pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar))
@@ -149,8 +133,8 @@ class AccesoFamiliarServiceTest {
         @Test
         @DisplayName("Familiar con EDICION_LIMITADA puede leer y editar")
         void familiarEdicionLimitadaPuedeEditar() {
-            given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
-                    .willReturn(Optional.of(vinculo(PermisoColaborador.EDICION_LIMITADA)));
+            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
+                    .willReturn(new AccesoPaciente(paciente, null, false, PermisoColaborador.EDICION_LIMITADA));
 
             assertThatCode(() -> pacienteService.verificarEdicionParaUsuario(pacienteId, familiar))
                     .doesNotThrowAnyException();
