@@ -3,7 +3,6 @@ package com.caa.api.repositories;
 import com.caa.api.models.Paciente;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -12,11 +11,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface PacienteRepository extends JpaRepository<Paciente, UUID> {
-    // LEGACY: usados únicamente por el endpoint deprecado POST/GET/PUT/DELETE /api/pacientes
-    // (RolUsuario, sin organización). Su eliminación es la tarea 3.7c (deferida, design §7);
-    // no se migran en esta fase para mantener el endpoint viejo "presente y funcionando" (task 2.11).
-    List<Paciente> findByTerapeutaId(UUID terapeutaId);
-    Optional<Paciente> findByIdAndTerapeutaId(UUID id, UUID terapeutaId);
 
     /** Workspace completo: {@code GET /api/organizaciones/{id}/pacientes} para rolGestion OWNER/ADMIN. */
     List<Paciente> findByOrganizacion_Id(UUID organizacionId);

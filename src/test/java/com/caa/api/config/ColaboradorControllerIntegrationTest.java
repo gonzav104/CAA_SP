@@ -1,6 +1,7 @@
 package com.caa.api.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -9,19 +10,29 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.caa.api.models.Invitacion;
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.PermisoColaborador;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
+import com.caa.api.repositories.InvitacionRepository;
+import com.caa.api.repositories.MembresiaRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
+import com.caa.api.repositories.PacienteTerapeutaRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.EmailService;
 import com.caa.api.services.JwtService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,11 +50,11 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
- * Contrato HTTP de colaboradores pineado por test (spec colaboradores-api):
- * los errores de auth/permisos son genéricos y NO funcionan como oráculo de
- * enumeración (existencia de cuenta, rol o vínculo). Replica el patrón de
- * CartillaOwnershipIntegrationTest: @SpringBootTest + H2 + repos @MockitoBean
- * + servicio real + MockMvc/springSecurity + JWT real.
+ * Contrato HTTP de colaboradores (spec {@code patient-collaborators} MODIFICADA): agregar un
+ * colaborador ya NO vincula directamente — crea una invitación (202) y responde con la MISMA
+ * forma sea el email destino ya tenga cuenta o no (no-enumeración). {@code ColaboradorServiceImpl},
+ * {@code InvitacionServiceImpl} y {@code AccesoServiceImpl} reales; solo los repositorios y
+ * {@code EmailService} se mockean.
  */
 @SpringBootTest
 @TestPropertySource(properties = {
@@ -57,7 +68,7 @@ import org.springframework.web.context.WebApplicationContext;
         "cloudinary.api-secret=test-api-secret",
         "resend.api-key=test-resend-api-key"
 })
-@DisplayName("Colaboradores — contrato HTTP genérico (404/409 sin oráculo)")
+@DisplayName("Colaboradores — contrato HTTP (invitación, 202, sin oráculo de cuenta)")
 class ColaboradorControllerIntegrationTest {
 
     @Autowired
@@ -73,18 +84,19 @@ class ColaboradorControllerIntegrationTest {
     // un bean ObjectMapper: se instancia directo para parsear los bodies de error.
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @MockitoBean
-    private UsuarioRepository usuarioRepository;
-
-    @MockitoBean
-    private PacienteRepository pacienteRepository;
-
-    @MockitoBean
-    private PacienteFamiliarRepository pacienteFamiliarRepository;
+    @MockitoBean private UsuarioRepository usuarioRepository;
+    @MockitoBean private PacienteRepository pacienteRepository;
+    @MockitoBean private MembresiaRepository membresiaRepository;
+    @MockitoBean private PacienteTerapeutaRepository pacienteTerapeutaRepository;
+    @MockitoBean private PacienteFamiliarRepository pacienteFamiliarRepository;
+    @MockitoBean private InvitacionRepository invitacionRepository;
+    @MockitoBean private EmailService emailService;
 
     private MockMvc mockMvc;
+    private UUID organizacionId;
     private UUID pacienteId;
     private Usuario terapeuta;
+    private Organizacion organizacion;
     private Paciente paciente;
     private String tokenTerapeuta;
 
@@ -95,24 +107,54 @@ class ColaboradorControllerIntegrationTest {
                 .apply(springSecurity())
                 .build();
 
+        organizacionId = UUID.randomUUID();
         pacienteId = UUID.randomUUID();
 
         terapeuta = Usuario.builder()
                 .id(UUID.randomUUID()).email("terapeuta@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
-                .nombre("Terapeuta").rol(RolUsuario.TERAPEUTA).build();
+                // RolUsuario es legacy y ya no se usa para autorización (Membresia la reemplaza),
+                // pero JwtService todavía lo exige para emitir el token (tarea 10.4, fuera de
+                // alcance aquí): se fija solo para que generarToken no lance NPE.
+                .rol(RolUsuario.TERAPEUTA)
+                .nombre("Terapeuta").build();
+
+        organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").creadoPor(terapeuta).build();
 
         paciente = Paciente.builder()
-                .id(pacienteId).terapeuta(terapeuta)
+                .id(pacienteId).organizacion(organizacion)
                 .nombre("Nico").apellido("Perez").build();
 
         tokenTerapeuta = jwtService.generarToken(terapeuta);
 
-        // Identidad del principal: la usa el filtro JWT y terapeutaAutenticado
         given(usuarioRepository.findByEmail("terapeuta@test.com")).willReturn(Optional.of(terapeuta));
-        // Ownership del paciente (pacienteDelTerapeuta)
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
-                .willReturn(Optional.of(paciente));
+        given(pacienteRepository.findById(pacienteId)).willReturn(Optional.of(paciente));
+        given(membresiaRepository.findById(new MembresiaId(organizacionId, terapeuta.getId())))
+                .willReturn(Optional.of(membresiaOwner()));
+
+        // InvitacionRepository real guardaría en H2 y violaría el FK de paciente_id (el Paciente
+        // de este test es un stub de Mockito, nunca persistido); se mockea con un "echo" que
+        // completa id/creadoEn como lo haría la base de datos real, sin tocar H2.
+        given(invitacionRepository.saveAndFlush(any(Invitacion.class))).willAnswer(invocacion -> {
+            Invitacion invitacion = invocacion.getArgument(0);
+            if (invitacion.getId() == null) {
+                invitacion.setId(UUID.randomUUID());
+            }
+            if (invitacion.getCreadoEn() == null) {
+                invitacion.setCreadoEn(LocalDateTime.now());
+            }
+            return invitacion;
+        });
+    }
+
+    private Membresia membresiaOwner() {
+        return Membresia.builder()
+                .id(new MembresiaId(organizacionId, terapeuta.getId()))
+                .organizacion(organizacion)
+                .usuario(terapeuta)
+                .rolGestion(RolGestion.OWNER)
+                .esTerapeuta(true)
+                .build();
     }
 
     private PacienteFamiliar vinculo(Usuario familiar) {
@@ -130,89 +172,104 @@ class ColaboradorControllerIntegrationTest {
     }
 
     // ──────────────────────────────────────────────
-    //  POST vincular — 404 genérico (indistinguible)
+    //  POST vincular — ahora 202 (invitación), no 201
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("POST email inexistente → 404 \"Usuario no encontrado\" sin el email en el body")
-    void post_emailInexistente_404() throws Exception {
+    @DisplayName("POST a un email sin cuenta → 202, invitación PENDIENTE, sin crear ningún Usuario")
+    void post_emailSinCuenta_202() throws Exception {
         given(usuarioRepository.findByEmail("nadie@test.com")).willReturn(Optional.empty());
 
         mockMvc.perform(post("/api/pacientes/{pacienteId}/colaboradores", pacienteId)
                         .header("Authorization", "Bearer " + tokenTerapeuta)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\": \"nadie@test.com\", \"permiso\": \"LECTURA\"}"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.message").value("Usuario no encontrado"));
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.tipo").value("PACIENTE_FAMILIAR"))
+                .andExpect(jsonPath("$.email").value("nadie@test.com"))
+                .andExpect(jsonPath("$.estado").value("PENDIENTE"))
+                .andExpect(jsonPath("$.permisoPropuesto").value("LECTURA"));
     }
 
     @Test
-    @DisplayName("POST cuenta rol TERAPEUTA → 404 idéntico (400→404 deliberado)")
-    void post_cuentaTerapeuta_404() throws Exception {
-        Usuario otroTerapeuta = Usuario.builder()
-                .id(UUID.randomUUID()).email("otro@test.com")
+    @DisplayName("POST a un email con cuenta ya existente → 202, misma forma")
+    void post_emailConCuentaExistente_202() throws Exception {
+        Usuario existente = Usuario.builder()
+                .id(UUID.randomUUID()).email("existente@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
-                .nombre("Otro").rol(RolUsuario.TERAPEUTA).build();
-        given(usuarioRepository.findByEmail("otro@test.com")).willReturn(Optional.of(otroTerapeuta));
+                .nombre("Existente").build();
+        given(usuarioRepository.findByEmail("existente@test.com")).willReturn(Optional.of(existente));
 
         mockMvc.perform(post("/api/pacientes/{pacienteId}/colaboradores", pacienteId)
                         .header("Authorization", "Bearer " + tokenTerapeuta)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\": \"otro@test.com\", \"permiso\": \"LECTURA\"}"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.message").value("Usuario no encontrado"));
+                        .content("{\"email\": \"existente@test.com\", \"permiso\": \"LECTURA\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.tipo").value("PACIENTE_FAMILIAR"))
+                .andExpect(jsonPath("$.email").value("existente@test.com"))
+                .andExpect(jsonPath("$.estado").value("PENDIENTE"));
     }
 
     @Test
-    @DisplayName("Sin oráculo por iteración: mismo email inexistente y luego TERAPEUTA → bodies idénticos (salvo timestamp)")
-    void post_mismoEmail_iterado_bodiesIdenticos() throws Exception {
-        Usuario otroTerapeuta = Usuario.builder()
-                .id(UUID.randomUUID()).email("nadie@test.com")
+    @DisplayName("Sin oráculo de cuenta: email inexistente y email con cuenta → bodies idénticos (salvo email/timestamp)")
+    void post_sinOraculoDeCuenta_bodiesIdenticos() throws Exception {
+        Usuario existente = Usuario.builder()
+                .id(UUID.randomUUID()).email("otro@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
-                .nombre("Otro").rol(RolUsuario.TERAPEUTA).build();
-        // Stub secuencial: 1er intento no existe, 2do intento rol inválido
-        given(usuarioRepository.findByEmail("nadie@test.com"))
-                .willReturn(Optional.empty(), Optional.of(otroTerapeuta));
+                .nombre("Otro").build();
+        given(usuarioRepository.findByEmail("inexistente@test.com")).willReturn(Optional.empty());
+        given(usuarioRepository.findByEmail("otro@test.com")).willReturn(Optional.of(existente));
 
-        String body = "{\"email\": \"nadie@test.com\", \"permiso\": \"LECTURA\"}";
-
-        MvcResult primero = mockMvc.perform(post("/api/pacientes/{pacienteId}/colaboradores", pacienteId)
+        MvcResult sinCuenta = mockMvc.perform(post("/api/pacientes/{pacienteId}/colaboradores", pacienteId)
                         .header("Authorization", "Bearer " + tokenTerapeuta)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Usuario no encontrado"))
+                        .content("{\"email\": \"inexistente@test.com\", \"permiso\": \"LECTURA\"}"))
+                .andExpect(status().isAccepted())
                 .andReturn();
 
-        MvcResult segundo = mockMvc.perform(post("/api/pacientes/{pacienteId}/colaboradores", pacienteId)
+        MvcResult conCuenta = mockMvc.perform(post("/api/pacientes/{pacienteId}/colaboradores", pacienteId)
                         .header("Authorization", "Bearer " + tokenTerapeuta)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("Usuario no encontrado"))
+                        .content("{\"email\": \"otro@test.com\", \"permiso\": \"LECTURA\"}"))
+                .andExpect(status().isAccepted())
                 .andReturn();
 
-        JsonNode body1 = objectMapper.readTree(primero.getResponse().getContentAsString());
-        JsonNode body2 = objectMapper.readTree(segundo.getResponse().getContentAsString());
+        ObjectNode bodySinCuenta = (ObjectNode) sinTimestamp(objectMapper.readTree(sinCuenta.getResponse().getContentAsString()));
+        ObjectNode bodyConCuenta = (ObjectNode) sinTimestamp(objectMapper.readTree(conCuenta.getResponse().getContentAsString()));
+        // "id" difiere siempre (UUID nuevo por invitación); "email" es la única diferencia esperada.
+        bodySinCuenta.remove("id");
+        bodyConCuenta.remove("id");
+        bodySinCuenta.remove("email");
+        bodyConCuenta.remove("email");
+        bodySinCuenta.remove("expiraEn");
+        bodyConCuenta.remove("expiraEn");
 
-        assertThat(body1.get("status").asInt()).isEqualTo(404);
-        assertThat(body2.get("status").asInt()).isEqualTo(404);
-        assertThat(sinTimestamp(body1)).isEqualTo(sinTimestamp(body2));
+        assertThat(bodySinCuenta).isEqualTo(bodyConCuenta);
     }
 
-    // ──────────────────────────────────────────────
-    //  POST vincular — 409 texto neutro
-    // ──────────────────────────────────────────────
+    @Test
+    @DisplayName("POST sin acceso al paciente (no es miembro de la organización) → 404 genérico")
+    void post_sinAcceso_404() throws Exception {
+        given(membresiaRepository.findById(new MembresiaId(organizacionId, terapeuta.getId())))
+                .willReturn(Optional.empty());
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, terapeuta.getId()))
+                .willReturn(Optional.empty());
+
+        mockMvc.perform(post("/api/pacientes/{pacienteId}/colaboradores", pacienteId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\": \"nadie@test.com\", \"permiso\": \"LECTURA\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
+    }
 
     @Test
-    @DisplayName("POST familiar ya vinculado → 409 \"No se puede vincular este usuario\"")
-    void post_familiarYaVinculado_409() throws Exception {
+    @DisplayName("POST a quien ya es colaborador del paciente → 409 \"No se puede invitar a este usuario\"")
+    void post_yaEsColaborador_409() throws Exception {
         Usuario familiar = Usuario.builder()
                 .id(UUID.randomUUID()).email("mama@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
-                .nombre("Mama").rol(RolUsuario.FAMILIAR).build();
+                .nombre("Mama").build();
         given(usuarioRepository.findByEmail("mama@test.com")).willReturn(Optional.of(familiar));
         given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()))
                 .willReturn(Optional.of(vinculo(familiar)));
@@ -223,7 +280,7 @@ class ColaboradorControllerIntegrationTest {
                         .content("{\"email\": \"mama@test.com\", \"permiso\": \"LECTURA\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
-                .andExpect(jsonPath("$.message").value("No se puede vincular este usuario"));
+                .andExpect(jsonPath("$.message").value("No se puede invitar a este usuario"));
     }
 
     // ──────────────────────────────────────────────
