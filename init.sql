@@ -573,6 +573,10 @@ DECLARE
 BEGIN
     IF TG_TABLE_NAME = 'organizaciones' THEN
         v_org := NEW.id;
+    ELSIF TG_OP = 'DELETE' THEN
+        -- NEW no está asignado en una ejecución de fila disparada por DELETE; no se lo debe
+        -- referenciar ni siquiera dentro de COALESCE.
+        v_org := OLD.organizacion_id;
     ELSE
         v_org := COALESCE(NEW.organizacion_id, OLD.organizacion_id);
     END IF;
@@ -613,3 +617,17 @@ BEGIN
             FOR EACH ROW EXECUTE FUNCTION fn_verificar_un_owner();
     END IF;
 END $$;
+
+-- ========================================================
+-- MIGRACIÓN 015a — usuarios.rol: relajar NOT NULL (soporte multi-tenant)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 015.
+-- Numerada como sub-paso de la 015 (no 016) a propósito: la MIGRACIÓN 016 está reservada
+-- para el cutover de la Fase 10, que vuelve a poner rol/terapeuta_id en NOT NULL una vez
+-- completada la migración a organizaciones. Esta migración es el correlato de esquema del
+-- cambio ya aplicado en Usuario.java (@Column(nullable = true) sobre rol, tarea 1.14 de la
+-- Fase 1): un usuario puede existir sin rol de legado mientras su identidad de gobernanza
+-- viva en membresias.rol_gestion. ALTER COLUMN ... DROP NOT NULL es naturalmente idempotente
+-- en PostgreSQL (no falla si la columna ya es nullable), igual que el ALTER ... SET NOT NULL
+-- de la MIGRACIÓN 009; no se necesita un bloque DO de guarda.
+-- ========================================================
+ALTER TABLE usuarios ALTER COLUMN rol DROP NOT NULL;

@@ -128,6 +128,67 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
         }
     }
 
+    @Test
+    @DisplayName("4a. Eliminar una membresía que NO es OWNER: el COMMIT tiene éxito "
+            + "(el DELETE no debe fallar por referenciar NEW, que no está asignado)")
+    void eliminarMembresiaNoOwnerCommiteaSinError() throws SQLException, IOException {
+        try (Connection conexion = abrirConexion()) {
+            aplicarInitSqlHasta(conexion, null);
+            UUID owner = crearUsuario(conexion, "owner4a@test.com");
+            UUID admin = crearUsuario(conexion, "admin4a@test.com");
+            UUID organizacion = crearOrganizacion(conexion, owner);
+            insertarMembresia(conexion, organizacion, owner, "OWNER", true);
+            insertarMembresia(conexion, organizacion, admin, "ADMIN", false);
+
+            conexion.setAutoCommit(false);
+            try (Statement statement = conexion.createStatement()) {
+                statement.execute("DELETE FROM membresias WHERE organizacion_id = '" + organizacion
+                        + "' AND usuario_id = '" + admin + "'");
+            }
+
+            conexion.commit();
+            conexion.setAutoCommit(true);
+
+            try (Statement statement = conexion.createStatement();
+                 ResultSet resultSet = statement.executeQuery(
+                         "SELECT COUNT(*) FROM membresias WHERE organizacion_id = '" + organizacion
+                                 + "' AND rol_gestion = 'OWNER'")) {
+                assertThat(resultSet.next()).isTrue();
+                assertThat(resultSet.getInt(1)).isEqualTo(1);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("4b. Eliminar una organización (su membresía OWNER cae por ON DELETE CASCADE): "
+            + "el COMMIT tiene éxito en vez de abortar por 'record \"new\" is not assigned yet'")
+    void eliminarOrganizacionConCascadaAMembresiaOwnerCommiteaSinError() throws SQLException, IOException {
+        try (Connection conexion = abrirConexion()) {
+            aplicarInitSqlHasta(conexion, null);
+            UUID owner = crearUsuario(conexion, "owner4b@test.com");
+            UUID organizacion = crearOrganizacion(conexion, owner);
+            insertarMembresia(conexion, organizacion, owner, "OWNER", true);
+
+            conexion.setAutoCommit(false);
+            try (Statement statement = conexion.createStatement()) {
+                // ON DELETE CASCADE (fk_membresia_organizacion) borra la membresía OWNER en la misma
+                // sentencia; antes del fix, fn_verificar_un_owner() abortaba con "record \"new\" is
+                // not assigned yet" al intentar leer NEW.organizacion_id dentro de COALESCE.
+                statement.execute("DELETE FROM organizaciones WHERE id = '" + organizacion + "'");
+            }
+
+            conexion.commit();
+            conexion.setAutoCommit(true);
+
+            try (Statement statement = conexion.createStatement();
+                 ResultSet resultSet = statement.executeQuery(
+                         "SELECT COUNT(*) FROM organizaciones WHERE id = '" + organizacion + "'")) {
+                assertThat(resultSet.next()).isTrue();
+                assertThat(resultSet.getInt(1)).isZero();
+            }
+        }
+    }
+
     private UUID crearUsuario(Connection conexion, String email) throws SQLException {
         try (Statement statement = conexion.createStatement();
              ResultSet resultSet = statement.executeQuery(
