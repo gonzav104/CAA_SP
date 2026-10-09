@@ -11,6 +11,8 @@ import com.caa.api.repositories.ItemCartillaRepository;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.AccesoService;
+import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.CloudinaryService;
 import com.caa.api.services.PacienteService;
 import com.caa.api.services.PictogramaCustomService;
@@ -31,6 +33,7 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
     private final ItemCartillaRepository itemCartillaRepository;
     private final PacienteService pacienteService;
     private final CloudinaryService cloudinaryService;
+    private final AccesoService accesoService;
 
     @Override
     @Transactional(readOnly = true)
@@ -110,14 +113,15 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
         return toResponseDTO(actualizado);
     }
 
+    /** Baja de pictograma custom: GESTION_CLINICA (acceso de equipo), ya no terapeuta-propietario
+     * directo vía {@code findByIdAndTerapeutaId} (design-part2 §11.2, tarea 3.5). */
     @Override
     @Transactional
     public void eliminarPictograma(UUID pacienteId, UUID id, String emailUsuario) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailUsuario)
+        Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         PictogramaCustom pictograma = pictogramaCustomRepository.findById(id)
                 .filter(p -> p.getPaciente().getId().equals(pacienteId))
