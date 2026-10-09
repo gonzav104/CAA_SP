@@ -28,6 +28,7 @@ class CompositeFkPostgresIntegrationTest extends PostgresTestcontainerBase {
     void organizacionUsuarioSinMembresiaEsRechazado() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
             aplicarInitSqlHasta(conexion, null);
+            conexion.setAutoCommit(false);
 
             UUID ownerA = crearUsuario(conexion, "ownerA@test.com");
             UUID ownerB = crearUsuario(conexion, "ownerB@test.com");
@@ -48,6 +49,7 @@ class CompositeFkPostgresIntegrationTest extends PostgresTestcontainerBase {
     void pacienteDeOtraOrganizacionEsRechazado() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
             aplicarInitSqlHasta(conexion, null);
+            conexion.setAutoCommit(false);
 
             UUID ownerA = crearUsuario(conexion, "ownerA2@test.com");
             UUID ownerB = crearUsuario(conexion, "ownerB2@test.com");
