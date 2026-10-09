@@ -48,6 +48,37 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     }
 
     @Test
+    @DisplayName("1b. Mover al único OWNER a otra organización (demovido en el destino): "
+            + "la organización de ORIGEN queda sin OWNER y el COMMIT debe fallar")
+    void moverUnicoOwnerAOtraOrganizacionDejaOrigenSinOwner() throws SQLException, IOException {
+        try (Connection conexion = abrirConexion()) {
+            aplicarInitSqlHasta(conexion, null);
+            conexion.setAutoCommit(false);
+            UUID ownerOrigen = crearUsuario(conexion, "owner-origen@test.com");
+            UUID ownerDestino = crearUsuario(conexion, "owner-destino@test.com");
+            UUID organizacionOrigen = crearOrganizacion(conexion, ownerOrigen);
+            UUID organizacionDestino = crearOrganizacion(conexion, ownerDestino);
+            insertarMembresia(conexion, organizacionOrigen, ownerOrigen, "OWNER", true);
+            insertarMembresia(conexion, organizacionDestino, ownerDestino, "OWNER", true);
+
+            try (Statement statement = conexion.createStatement()) {
+                // El destino queda con un solo OWNER (ownerDestino) porque esta fila entra
+                // como ADMIN: la revisión del destino NO detecta el problema. Solo revisar
+                // también el origen (organizacionOrigen, que se queda con cero OWNER) expone
+                // el bug que esta migración debe prevenir.
+                statement.execute("UPDATE membresias SET organizacion_id = '" + organizacionDestino
+                        + "', rol_gestion = 'ADMIN' WHERE organizacion_id = '" + organizacionOrigen
+                        + "' AND usuario_id = '" + ownerOrigen + "'");
+            }
+
+            assertThatThrownBy(conexion::commit)
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("exactamente un OWNER")
+                    .hasMessageContaining(organizacionOrigen.toString());
+        }
+    }
+
+    @Test
     @DisplayName("2. Demover al OWNER actual Y promover un reemplazo en la MISMA transacción: el COMMIT tiene éxito (swap)")
     void demoverYPromoverEnLaMismaTransaccionTieneExito() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {

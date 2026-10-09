@@ -569,12 +569,15 @@ COMMIT;
 CREATE OR REPLACE FUNCTION fn_verificar_un_owner() RETURNS TRIGGER AS $$
 DECLARE
     v_org UUID;
+    v_org_origen UUID;
     v_owners INTEGER;
 BEGIN
     -- En una función de trigger por fila, el registro no aplicable a la operación
     -- (OLD en INSERT, NEW en DELETE) no está asignado: no se lo debe referenciar
     -- ni siquiera dentro de COALESCE, o PostgreSQL lanza "record is not assigned yet".
     -- Por eso cada rama toca únicamente el registro garantizado por TG_OP.
+    v_org_origen := NULL;
+
     IF TG_TABLE_NAME = 'organizaciones' THEN
         v_org := NEW.id;
     ELSE
@@ -585,9 +588,25 @@ BEGIN
                 v_org := NEW.organizacion_id;
             ELSE
                 -- UPDATE: organizacion_id es NOT NULL y forma parte de la PK de
-                -- membresias, por lo que NEW siempre trae el valor vigente.
+                -- membresias, por lo que NEW siempre trae el valor vigente. Si el
+                -- UPDATE además cambió organizacion_id, la organización de ORIGEN
+                -- (OLD) también pudo quedar sin ningún OWNER y debe revalidarse.
                 v_org := NEW.organizacion_id;
+                IF OLD.organizacion_id IS DISTINCT FROM NEW.organizacion_id THEN
+                    v_org_origen := OLD.organizacion_id;
+                END IF;
         END CASE;
+    END IF;
+
+    IF v_org_origen IS NOT NULL AND EXISTS (SELECT 1 FROM organizaciones WHERE id = v_org_origen) THEN
+        SELECT COUNT(*) INTO v_owners
+        FROM membresias
+        WHERE organizacion_id = v_org_origen AND rol_gestion = 'OWNER';
+
+        IF v_owners <> 1 THEN
+            RAISE EXCEPTION 'La organizacion % debe tener exactamente un OWNER (tiene %)', v_org_origen, v_owners
+                USING ERRCODE = '23514';
+        END IF;
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM organizaciones WHERE id = v_org) THEN
