@@ -4,12 +4,13 @@ import com.caa.api.dtos.SesionActualizacionDTO;
 import com.caa.api.dtos.SesionRegistroDTO;
 import com.caa.api.dtos.SesionResponseDTO;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
-import com.caa.api.models.Paciente;
 import com.caa.api.models.Sesion;
 import com.caa.api.models.Usuario;
-import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.SesionRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.AccesoService;
+import com.caa.api.services.AccesoService.AccesoPaciente;
+import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.SesionService;
 import java.util.List;
 import java.util.UUID;
@@ -22,19 +23,22 @@ import org.springframework.transaction.annotation.Transactional;
 public class SesionServiceImpl implements SesionService {
 
     private final SesionRepository sesionRepository;
-    private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final AccesoService accesoService;
 
     @Override
     public SesionResponseDTO registrarSesion(UUID pacienteId, SesionRegistroDTO dto, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
+        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        Paciente paciente = pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        // Las sesiones son un recurso clínico (design-part2 §11.2): GESTION_CLINICA exige
+        // acceso de equipo (gestión OWNER/ADMIN o miembro clínico asignado). Un acceso
+        // puramente familiar nunca satisface esEquipo(), así que la exclusión de familiares
+        // (regla funcional sin cambios) se preserva automáticamente.
+        AccesoPaciente acceso = accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         Sesion sesion = Sesion.builder()
-                .paciente(paciente)
+                .paciente(acceso.paciente())
                 .fechaHora(dto.fechaHora())
                 .disposicion(dto.disposicion())
                 .objetivosTrabajados(dto.objetivosTrabajados())
@@ -53,10 +57,7 @@ public class SesionServiceImpl implements SesionService {
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Las sesiones son un recurso clínico del terapeuta: SOLO el terapeuta propietario las ve.
-        // El familiar asignado NO tiene acceso (a diferencia de cartillas/pictogramas custom).
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, usuario.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         return sesionRepository.findByPacienteId(pacienteId).stream()
                 .map(this::toResponseDTO)
@@ -69,9 +70,7 @@ public class SesionServiceImpl implements SesionService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Las sesiones son un recurso clínico del terapeuta: SOLO el terapeuta propietario las ve.
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, usuario.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         Sesion sesion = sesionRepository.findByIdAndPacienteId(sesionId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Sesión no encontrada o no tiene permisos"));
@@ -85,9 +84,7 @@ public class SesionServiceImpl implements SesionService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Las sesiones son un recurso clínico del terapeuta: SOLO el terapeuta propietario las modifica.
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, usuario.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         Sesion sesion = sesionRepository.findByIdAndPacienteId(sesionId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Sesión no encontrada o no tiene permisos"));
@@ -108,9 +105,7 @@ public class SesionServiceImpl implements SesionService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Las sesiones son un recurso clínico del terapeuta: SOLO el terapeuta propietario las elimina.
-        pacienteRepository.findByIdAndTerapeutaId(pacienteId, usuario.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         Sesion sesion = sesionRepository.findByIdAndPacienteId(sesionId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Sesión no encontrada o no tiene permisos"));
