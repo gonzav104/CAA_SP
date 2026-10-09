@@ -571,14 +571,23 @@ DECLARE
     v_org UUID;
     v_owners INTEGER;
 BEGIN
+    -- En una función de trigger por fila, el registro no aplicable a la operación
+    -- (OLD en INSERT, NEW en DELETE) no está asignado: no se lo debe referenciar
+    -- ni siquiera dentro de COALESCE, o PostgreSQL lanza "record is not assigned yet".
+    -- Por eso cada rama toca únicamente el registro garantizado por TG_OP.
     IF TG_TABLE_NAME = 'organizaciones' THEN
         v_org := NEW.id;
-    ELSIF TG_OP = 'DELETE' THEN
-        -- NEW no está asignado en una ejecución de fila disparada por DELETE; no se lo debe
-        -- referenciar ni siquiera dentro de COALESCE.
-        v_org := OLD.organizacion_id;
     ELSE
-        v_org := COALESCE(NEW.organizacion_id, OLD.organizacion_id);
+        CASE TG_OP
+            WHEN 'DELETE' THEN
+                v_org := OLD.organizacion_id;
+            WHEN 'INSERT' THEN
+                v_org := NEW.organizacion_id;
+            ELSE
+                -- UPDATE: organizacion_id es NOT NULL y forma parte de la PK de
+                -- membresias, por lo que NEW siempre trae el valor vigente.
+                v_org := NEW.organizacion_id;
+        END CASE;
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM organizaciones WHERE id = v_org) THEN
