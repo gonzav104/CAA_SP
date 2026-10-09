@@ -9,10 +9,6 @@ import java.util.List;
 import java.util.UUID;
 
 public interface PacienteService {
-    // LEGACY: endpoint deprecado POST /api/pacientes (sin organización, basado en RolUsuario).
-    // Su eliminación es la tarea 3.7c (deferida); se mantiene sin cambios en esta fase para que
-    // siga "presente y funcionando" (task 2.11, design §7).
-    PacienteResponseDTO registrarPaciente(PacienteRegistroDTO dto, String emailTerapeuta);
 
     /**
      * {@code POST /api/organizaciones/{organizacionId}/pacientes} (design part 1 §10.3): exige

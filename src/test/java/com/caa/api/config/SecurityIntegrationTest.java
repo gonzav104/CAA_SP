@@ -157,8 +157,9 @@ class SecurityIntegrationTest {
         given(usuarioRepository.findByEmail("integration@ejemplo.com"))
                 .willReturn(Optional.of(usuarioTest));
 
-        // /api/pacientes no existe, pero el filtro de seguridad corre primero.
-        // Token válido → pasa el filtro → dispatcher devuelve 404/405, NO 401.
+        // GET /api/pacientes existe (union list, Fase 2) y el filtro de seguridad corre primero.
+        // Token válido → pasa el filtro → el endpoint responde 200 (lista vacía con este usuario
+        // sin membresías/vínculos reales en H2), nunca 401.
         mockMvc.perform(get("/api/pacientes")
                         .header("Authorization", "Bearer " + tokenValido)
                         .contentType(MediaType.APPLICATION_JSON))

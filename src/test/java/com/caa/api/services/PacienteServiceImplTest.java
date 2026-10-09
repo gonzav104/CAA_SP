@@ -216,51 +216,6 @@ class PacienteServiceImplTest {
     }
 
     // ──────────────────────────────────────────────
-    //  LEGACY: POST /api/pacientes (sin organización, RolUsuario) — task 2.11, sin cambios
-    // ──────────────────────────────────────────────
-
-    @Test
-    @DisplayName("registrarPaciente con principal inexistente → 404 genérico \"Usuario no encontrado\"")
-    void registrarPaciente_principalInexistente_lanzaExcepcion() {
-        given(usuarioRepository.findByEmail("nadie@ejemplo.com")).willReturn(Optional.empty());
-
-        PacienteRegistroDTO dto = new PacienteRegistroDTO("Nico", "Perez", LocalDate.of(2020, 5, 10));
-
-        assertThatThrownBy(() -> pacienteService.registrarPaciente(dto, "nadie@ejemplo.com"))
-                .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("Usuario no encontrado");
-    }
-
-    @Test
-    @DisplayName("registrarPaciente con rol FAMILIAR → 403 y no persiste")
-    void registrarPaciente_rolFamiliar_lanzaAccesoDenegadoYNoPersiste() {
-        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-
-        PacienteRegistroDTO dto = new PacienteRegistroDTO("Nico", "Perez", LocalDate.of(2020, 5, 10));
-
-        assertThatThrownBy(() -> pacienteService.registrarPaciente(dto, "familiar@ejemplo.com"))
-                .isInstanceOf(AccesoDenegadoException.class)
-                .hasMessageContaining("terapeuta");
-
-        verify(pacienteRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("registrarPaciente con rol TERAPEUTA → registra el paciente")
-    void registrarPaciente_rolTerapeuta_registraPaciente() {
-        given(usuarioRepository.findByEmail("terapeuta@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteRepository.save(any(Paciente.class))).willReturn(paciente);
-
-        PacienteRegistroDTO dto = new PacienteRegistroDTO("Nico", "Perez", LocalDate.of(2020, 5, 10));
-
-        PacienteResponseDTO resultado = pacienteService.registrarPaciente(dto, "terapeuta@ejemplo.com");
-
-        assertThat(resultado.id()).isEqualTo(pacienteId);
-        assertThat(resultado.nombre()).isEqualTo("Nico");
-        verify(pacienteRepository).save(any(Paciente.class));
-    }
-
-    // ──────────────────────────────────────────────
     //  PUT / DELETE /api/pacientes/{id} — vía AccesoService.exigirCapacidad
     // ──────────────────────────────────────────────
 

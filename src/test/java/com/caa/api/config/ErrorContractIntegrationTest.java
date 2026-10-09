@@ -72,8 +72,12 @@ class ErrorContractIntegrationTest {
     }
 
     @Test
-    @DisplayName("POST /api/pacientes autenticado como FAMILIAR → 403 y no persiste")
-    void registrarPaciente_familiar_devuelve403YNoPersiste() throws Exception {
+    @DisplayName("POST /api/pacientes (endpoint legacy REMOVIDO, tarea 3.7c) → 405, no 403; nunca persiste")
+    void postPacientesLegacy_removido_devuelve405YNoPersiste() throws Exception {
+        // El antiguo POST /api/pacientes (sin organización, RolUsuario) fue eliminado: el único
+        // camino de creación es POST /api/organizaciones/{organizacionId}/pacientes. La ruta
+        // /api/pacientes sigue existiendo (GET/PUT/DELETE), así que el dispatcher la reconoce
+        // pero rechaza el método con 405 Method Not Allowed, no 404 ni 403.
         UUID familiarId = UUID.randomUUID();
         Usuario familiar = Usuario.builder()
                 .id(familiarId)
@@ -92,7 +96,7 @@ class ErrorContractIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isMethodNotAllowed());
 
         verify(pacienteRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }

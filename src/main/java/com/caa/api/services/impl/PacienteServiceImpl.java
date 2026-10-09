@@ -3,7 +3,6 @@ package com.caa.api.services.impl;
 import com.caa.api.dtos.PacienteActualizacionDTO;
 import com.caa.api.dtos.PacienteRegistroDTO;
 import com.caa.api.dtos.PacienteResponseDTO;
-import com.caa.api.exceptions.AccesoDenegadoException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Membresia;
 import com.caa.api.models.Paciente;
@@ -42,40 +41,6 @@ public class PacienteServiceImpl implements PacienteService {
     private final AccesoService accesoService;
     private final PacienteTerapeutaRepository pacienteTerapeutaRepository;
     private final MembresiaRepository membresiaRepository;
-
-    // ──────────────────────────────────────────────
-    // LEGACY: POST /api/pacientes (sin organización, basado en RolUsuario). Su eliminación es
-    // la tarea 3.7c (deferida, design §7); se mantiene SIN CAMBIOS en esta fase para que siga
-    // "presente y funcionando" (task 2.11) mientras el frontend migra al endpoint org-scoped.
-    // ──────────────────────────────────────────────
-    @Override
-    public PacienteResponseDTO registrarPaciente(PacienteRegistroDTO dto, String emailTerapeuta) {
-        Usuario terapeuta = usuarioRepository.findByEmail(emailTerapeuta)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
-
-        if (terapeuta.getRol() != RolUsuario.TERAPEUTA) {
-            throw new AccesoDenegadoException("Solo un terapeuta puede registrar un paciente");
-        }
-
-        Paciente paciente = Paciente.builder()
-                .nombre(dto.nombre())
-                .apellido(dto.apellido())
-                .fechaNacimiento(dto.fechaNacimiento())
-                .terapeuta(terapeuta)
-                .build();
-
-        Paciente pacienteGuardado = pacienteRepository.save(paciente);
-
-        return new PacienteResponseDTO(
-                pacienteGuardado.getId(),
-                pacienteGuardado.getNombre(),
-                pacienteGuardado.getApellido(),
-                pacienteGuardado.getFechaNacimiento(),
-                pacienteGuardado.getCreadoEn(),
-                null,
-                pacienteGuardado.getGridSize()
-        );
-    }
 
     /**
      * {@code POST /api/organizaciones/{organizacionId}/pacientes} (design part 1 §10.3). Dual-write
