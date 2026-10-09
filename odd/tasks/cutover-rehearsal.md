@@ -30,4 +30,6 @@ Delivery boundary: T1-T3 form one coherent local work unit because pre016 extrac
 Next: local work-unit commit and native review consent. No real cutover authorized. Task outcomes verified; commit closure remains pending. Initial workspace assessment was unassessable due to undeclared untracked files; committed-only assessment will cover the explicit selected paths.
 
 ## Change inventory
+Work-unit receipt (supersedes pending-commit notes above): T1, T2 and T3 committed together as `c647cd0` (`feat(multitenant): rehearse migration 016 in disposable PostgreSQL`). Exact scope: 7 files, 433 additions and 7 deletions. All functional proof applies to these committed source bytes. Native review consent/outcome remains pending; no real cutover or push performed.
+
 Tracked diff: 76 additions / 7 deletions. New rehearsal test 155 lines, helper 93, SQL fixture 25, runbook 51; task record additional. Roughly 440 authored lines total, within forecast. Both Markdown documents are ignored by `.gitignore:39` and require explicit force-add to include in commits. No shared-base changes needed.
