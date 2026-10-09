@@ -40,9 +40,14 @@ public class Usuario {
     @Column(name = "nombre", nullable = false)
     private String nombre;
 
+    /**
+     * LEGACY: not read for authorization, not written by new flows. Relajado a nullable
+     * durante el período de dual-write del modelo multi-tenant (design §6); la fuente de
+     * verdad para autorización pasa a ser {@code Membresia.rolGestion} / {@code esTerapeuta}.
+     */
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
-    @Column(name = "rol", nullable = false)
+    @Column(name = "rol", nullable = true)
     private RolUsuario rol;
 
     @Column(name = "reset_token")

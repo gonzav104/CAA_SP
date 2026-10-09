@@ -30,15 +30,36 @@ public class Paciente {
     @Column(name = "id", nullable = false)
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    /**
+     * LEGACY: relajado a opcional/nullable durante el período de dual-write (design §2.6, §7).
+     * Se sigue escribiendo (siempre el usuario creador) mientras la columna de base de datos es
+     * NOT NULL, pero deja de leerse para autorización en este cambio: el acceso organizacional
+     * pasa por {@code organizacion} + {@code Membresia} + {@code PacienteTerapeuta}.
+     */
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(
             name = "terapeuta_id",
-            nullable = false,
+            nullable = true,
             foreignKey = @ForeignKey(name = "fk_paciente_terapeuta")
     )
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private Usuario terapeuta;
+
+    /**
+     * Organización a la que pertenece el paciente (design §2.6). Nullable en JPA durante el
+     * período de dual-write (MIGRACIÓN 014-015); se endurece a {@code optional=false,
+     * nullable=false} en el cutover (MIGRACIÓN 016, fuera de alcance de esta fase).
+     */
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(
+            name = "organizacion_id",
+            nullable = true,
+            foreignKey = @ForeignKey(name = "fk_paciente_organizacion")
+    )
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Organizacion organizacion;
 
     @Column(name = "nombre", nullable = false, length = 100)
     private String nombre;

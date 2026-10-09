@@ -291,3 +291,325 @@ WHERE es_principal
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_cartillas_una_principal_por_paciente
     ON cartillas (paciente_id) WHERE es_principal;
+
+-- ========================================================
+-- MIGRACIÓN 011 — tipos enumerados multi-tenant (rol_gestion, tipo_invitacion, estado_invitacion)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 010.
+-- rol_gestion es el rol de GOBERNANZA de una Membresia (OWNER/ADMIN/MIEMBRO), independiente
+-- de la capacidad clínica (membresias.es_terapeuta, booleano, MIGRACIÓN 012). No existe ningún
+-- valor de rol "TERAPEUTA" en este enum: ambos atributos son independientes a propósito.
+-- ========================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname = 'rol_gestion'
+    ) THEN
+        CREATE TYPE rol_gestion AS ENUM ('OWNER', 'ADMIN', 'MIEMBRO');
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname = 'tipo_invitacion'
+    ) THEN
+        CREATE TYPE tipo_invitacion AS ENUM ('ORGANIZACION', 'PACIENTE_FAMILIAR');
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname = 'estado_invitacion'
+    ) THEN
+        CREATE TYPE estado_invitacion AS ENUM ('PENDIENTE', 'ACEPTADA', 'REVOCADA', 'EXPIRADA');
+    END IF;
+END $$;
+
+-- ========================================================
+-- MIGRACIÓN 012 — organizaciones, membresias (modelo multi-tenant)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 011.
+-- Tablas nuevas: CREATE TABLE IF NOT EXISTS las vuelve no-op en re-ejecuciones.
+-- rol_gestion y es_terapeuta son atributos INDEPENDIENTES de una Membresia (ver MIGRACIÓN 011):
+-- ninguna combinación de los dos está prohibida, por lo que no hay CHECK que los relacione.
+-- uq_membresias_un_owner_por_organizacion: índice único PARCIAL (solo filas OWNER) que garantiza
+-- a lo sumo un OWNER por organización; la garantía de AL MENOS un OWNER llega en la MIGRACIÓN 015
+-- (trigger de restricción diferido, solo disponible una vez pobladas las filas existentes).
+-- ========================================================
+CREATE TABLE IF NOT EXISTS organizaciones (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre VARCHAR(150) NOT NULL,
+    creado_por_id UUID NOT NULL,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_organizacion_creado_por FOREIGN KEY (creado_por_id)
+        REFERENCES usuarios(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS membresias (
+    organizacion_id UUID NOT NULL,
+    usuario_id UUID NOT NULL,
+    rol_gestion rol_gestion NOT NULL,
+    es_terapeuta BOOLEAN NOT NULL DEFAULT FALSE,
+    unido_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organizacion_id, usuario_id),
+    CONSTRAINT fk_membresia_organizacion FOREIGN KEY (organizacion_id)
+        REFERENCES organizaciones(id) ON DELETE CASCADE,
+    CONSTRAINT fk_membresia_usuario FOREIGN KEY (usuario_id)
+        REFERENCES usuarios(id) ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_membresias_un_owner_por_organizacion
+    ON membresias (organizacion_id) WHERE rol_gestion = 'OWNER';
+
+CREATE INDEX IF NOT EXISTS idx_membresias_usuario ON membresias(usuario_id);
+
+-- ========================================================
+-- MIGRACIÓN 013 — backfill: organización + membresía OWNER por terapeuta existente
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 012.
+-- Alcance: solo terapeutas dueños de >=1 paciente (pacientes.terapeuta_id), no usuarios.rol.
+-- Los OWNER backfilleados nacen es_terapeuta = TRUE: son terapeutas en ejercicio real de esos
+-- pacientes. Envuelto en BEGIN/COMMIT porque las dos INSERT deben ser atómicas entre sí.
+-- Re-ejecutar no inserta filas adicionales: ambas INSERT usan NOT EXISTS sobre su propio destino.
+-- ========================================================
+BEGIN;
+
+INSERT INTO organizaciones (nombre, creado_por_id)
+SELECT LEFT('Consultorio de ' || u.nombre, 150), u.id
+FROM usuarios u
+WHERE EXISTS (SELECT 1 FROM pacientes p WHERE p.terapeuta_id = u.id)
+  AND NOT EXISTS (SELECT 1 FROM organizaciones o WHERE o.creado_por_id = u.id);
+
+INSERT INTO membresias (organizacion_id, usuario_id, rol_gestion, es_terapeuta)
+SELECT o.id, o.creado_por_id, 'OWNER', TRUE
+FROM organizaciones o
+WHERE NOT EXISTS (SELECT 1 FROM membresias m WHERE m.organizacion_id = o.id);
+
+COMMIT;
+
+-- ========================================================
+-- MIGRACIÓN 014 — pacientes.organizacion_id, pacientes_terapeutas, invitaciones (DDL)
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 013.
+-- Solo DDL: el backfill de pacientes.organizacion_id llega en la MIGRACIÓN 015, después de que
+-- esta migración exista en todos los entornos (expand antes de backfill).
+-- uq_pacientes_id_organizacion es el objetivo del FK compuesto fk_pt_paciente_organizacion.
+-- pacientes_terapeutas: tabla nueva (CREATE TABLE IF NOT EXISTS + FKs simples inline); los dos
+-- FK compuestos (fk_pt_membresia, fk_pt_paciente_organizacion) se agregan con el idiom de guarda
+-- porque dependen de columnas/índices recién creados en esta misma migración.
+-- invitaciones: tabla nueva; chk_invitacion_contexto (dos ramas, ORGANIZACION vs PACIENTE_FAMILIAR)
+-- también vía el idiom de guarda, siguiendo la convención existente para CHECK constraints.
+-- ========================================================
+ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS organizacion_id UUID;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_paciente_organizacion'
+    ) THEN
+        ALTER TABLE pacientes
+            ADD CONSTRAINT fk_paciente_organizacion
+            FOREIGN KEY (organizacion_id) REFERENCES organizaciones(id) ON DELETE RESTRICT;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'uq_pacientes_id_organizacion'
+    ) THEN
+        ALTER TABLE pacientes
+            ADD CONSTRAINT uq_pacientes_id_organizacion UNIQUE (id, organizacion_id);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_pacientes_organizacion ON pacientes(organizacion_id);
+
+CREATE TABLE IF NOT EXISTS pacientes_terapeutas (
+    paciente_id UUID NOT NULL,
+    usuario_id UUID NOT NULL,
+    organizacion_id UUID NOT NULL,
+    asignado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (paciente_id, usuario_id),
+    CONSTRAINT fk_pt_paciente FOREIGN KEY (paciente_id)
+        REFERENCES pacientes(id) ON DELETE CASCADE,
+    CONSTRAINT fk_pt_usuario FOREIGN KEY (usuario_id)
+        REFERENCES usuarios(id) ON DELETE RESTRICT
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_pt_membresia'
+    ) THEN
+        ALTER TABLE pacientes_terapeutas
+            ADD CONSTRAINT fk_pt_membresia
+            FOREIGN KEY (organizacion_id, usuario_id)
+            REFERENCES membresias (organizacion_id, usuario_id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_pt_paciente_organizacion'
+    ) THEN
+        ALTER TABLE pacientes_terapeutas
+            ADD CONSTRAINT fk_pt_paciente_organizacion
+            FOREIGN KEY (paciente_id, organizacion_id)
+            REFERENCES pacientes (id, organizacion_id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_pacientes_terapeutas_usuario ON pacientes_terapeutas(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_pacientes_terapeutas_org_usuario ON pacientes_terapeutas(organizacion_id, usuario_id);
+
+CREATE TABLE IF NOT EXISTS invitaciones (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tipo tipo_invitacion NOT NULL,
+    organizacion_id UUID,
+    paciente_id UUID,
+    email VARCHAR(255) NOT NULL,
+    rol_gestion_propuesto rol_gestion,
+    es_terapeuta_propuesto BOOLEAN,
+    permiso_propuesto permiso_colaborador,
+    token_hash VARCHAR(64) NOT NULL,
+    estado estado_invitacion NOT NULL DEFAULT 'PENDIENTE',
+    expira_en TIMESTAMP WITH TIME ZONE NOT NULL,
+    invitado_por_id UUID NOT NULL,
+    aceptada_por_id UUID,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    resuelta_en TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT fk_invitacion_organizacion FOREIGN KEY (organizacion_id)
+        REFERENCES organizaciones(id) ON DELETE CASCADE,
+    CONSTRAINT fk_invitacion_paciente FOREIGN KEY (paciente_id)
+        REFERENCES pacientes(id) ON DELETE CASCADE,
+    CONSTRAINT fk_invitacion_invitado_por FOREIGN KEY (invitado_por_id)
+        REFERENCES usuarios(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_invitacion_aceptada_por FOREIGN KEY (aceptada_por_id)
+        REFERENCES usuarios(id) ON DELETE RESTRICT
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_invitacion_contexto'
+    ) THEN
+        ALTER TABLE invitaciones
+            ADD CONSTRAINT chk_invitacion_contexto CHECK (
+                (tipo = 'ORGANIZACION' AND organizacion_id IS NOT NULL AND paciente_id IS NULL
+                    AND rol_gestion_propuesto IN ('ADMIN', 'MIEMBRO') AND es_terapeuta_propuesto IS NOT NULL
+                    AND permiso_propuesto IS NULL)
+                OR
+                (tipo = 'PACIENTE_FAMILIAR' AND paciente_id IS NOT NULL AND organizacion_id IS NULL
+                    AND permiso_propuesto IS NOT NULL AND rol_gestion_propuesto IS NULL
+                    AND es_terapeuta_propuesto IS NULL)
+            );
+    END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invitaciones_token_hash ON invitaciones(token_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invitaciones_pendiente_org
+    ON invitaciones (organizacion_id, email) WHERE estado = 'PENDIENTE' AND tipo = 'ORGANIZACION';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invitaciones_pendiente_paciente
+    ON invitaciones (paciente_id, email) WHERE estado = 'PENDIENTE' AND tipo = 'PACIENTE_FAMILIAR';
+CREATE INDEX IF NOT EXISTS idx_invitaciones_paciente ON invitaciones(paciente_id);
+CREATE INDEX IF NOT EXISTS idx_invitaciones_organizacion ON invitaciones(organizacion_id);
+
+-- ========================================================
+-- MIGRACIÓN 015 — backfill: pacientes.organizacion_id + pacientes_terapeutas + invariante OWNER
+-- Idempotente: aplicable sobre bases ya inicializadas con la MIGRACIÓN 014.
+-- Alcance ESTRICTO a pacientes sin organización todavía (tmp_pacientes_sin_org): es lo que hace
+-- segura una re-ejecución una vez que el código nuevo ya setea organizacion_id en la creación
+-- (esos pacientes quedan fuera de tmp_pacientes_sin_org) y una vez que existen pacientes
+-- deliberadamente sin terapeuta asignado (no se los reasigna). El filtro es_terapeuta = TRUE en el
+-- INSERT a pacientes_terapeutas es un refuerzo del invariante de la sección 3.5 del diseño: nunca
+-- se crea una fila de asignación para un terapeuta_id legado que ya no es terapeuta (es_terapeuta
+-- = FALSE) de su organización.
+-- La función y los triggers de restricción diferida se crean DESPUÉS de todo backfill (no pueden
+-- existir antes: fallarían con organizaciones backfilleadas sin OWNER todavía en la misma tx) y
+-- están guardados por pg_trigger para que la re-ejecución sea no-op.
+-- ========================================================
+BEGIN;
+
+CREATE LOCAL TEMPORARY TABLE tmp_pacientes_sin_org AS
+SELECT id FROM pacientes WHERE organizacion_id IS NULL;
+
+UPDATE pacientes p
+SET organizacion_id = (
+    SELECT o.id
+    FROM organizaciones o
+    JOIN membresias m ON m.organizacion_id = o.id
+                      AND m.usuario_id = o.creado_por_id
+                      AND m.rol_gestion = 'OWNER'
+    WHERE o.creado_por_id = p.terapeuta_id
+    ORDER BY o.creado_en ASC NULLS LAST, o.id ASC
+    LIMIT 1
+)
+WHERE p.organizacion_id IS NULL;
+
+INSERT INTO pacientes_terapeutas (paciente_id, usuario_id, organizacion_id)
+SELECT p.id, p.terapeuta_id, p.organizacion_id
+FROM pacientes p
+WHERE p.id IN (SELECT id FROM tmp_pacientes_sin_org)
+  AND p.organizacion_id IS NOT NULL
+  AND EXISTS (
+      SELECT 1 FROM membresias m
+      WHERE m.organizacion_id = p.organizacion_id
+        AND m.usuario_id = p.terapeuta_id
+        AND m.es_terapeuta = TRUE
+  )
+  AND NOT EXISTS (
+      SELECT 1 FROM pacientes_terapeutas pt
+      WHERE pt.paciente_id = p.id AND pt.usuario_id = p.terapeuta_id
+  );
+
+DROP TABLE tmp_pacientes_sin_org;
+
+COMMIT;
+
+CREATE OR REPLACE FUNCTION fn_verificar_un_owner() RETURNS TRIGGER AS $$
+DECLARE
+    v_org UUID;
+    v_owners INTEGER;
+BEGIN
+    IF TG_TABLE_NAME = 'organizaciones' THEN
+        v_org := NEW.id;
+    ELSE
+        v_org := COALESCE(NEW.organizacion_id, OLD.organizacion_id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM organizaciones WHERE id = v_org) THEN
+        RETURN NULL;
+    END IF;
+
+    SELECT COUNT(*) INTO v_owners
+    FROM membresias
+    WHERE organizacion_id = v_org AND rol_gestion = 'OWNER';
+
+    IF v_owners <> 1 THEN
+        RAISE EXCEPTION 'La organizacion % debe tener exactamente un OWNER (tiene %)', v_org, v_owners
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_membresias_un_owner') THEN
+        CREATE CONSTRAINT TRIGGER trg_membresias_un_owner
+            AFTER INSERT OR UPDATE OF rol_gestion, organizacion_id OR DELETE ON membresias
+            DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW EXECUTE FUNCTION fn_verificar_un_owner();
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_organizaciones_un_owner') THEN
+        CREATE CONSTRAINT TRIGGER trg_organizaciones_un_owner
+            AFTER INSERT ON organizaciones
+            DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW EXECUTE FUNCTION fn_verificar_un_owner();
+    END IF;
+END $$;
