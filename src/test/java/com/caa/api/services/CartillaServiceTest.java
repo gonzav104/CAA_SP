@@ -11,16 +11,22 @@ import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.ParadigmaCartilla;
+import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.PictogramaGlobal;
-import com.caa.api.models.RolUsuario;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.AccesoService.AccesoPaciente;
+import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.impl.CartillaServiceImpl;
 import java.util.List;
 import java.util.Optional;
@@ -38,50 +44,72 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.willDoNothing;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+/**
+ * Tarea 3.1-3.3: migrado de {@code creador_id}/{@code findByIdAndPacienteIdAndCreadorId}
+ * (ownership por creador) a {@code AccesoService.exigirCapacidad(...)} (design-part2 §11.2,
+ * regla R2 — "access derives from patient access, never from creador_id"). El fixture-helper
+ * {@code membresiaDe(rolGestion, esTerapeuta)} sigue el idiom compartido de la tarea 2.9/3.6.
+ */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("CartillaService — Tests unitarios")
+@DisplayName("CartillaService — Tests unitarios (AccesoService)")
 class CartillaServiceTest {
 
     @Mock private CartillaRepository cartillaRepository;
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private CategoriaRepository categoriaRepository;
     @Mock private ItemCartillaRepository itemCartillaRepository;
-    @Mock private PacienteService pacienteService;
+    @Mock private AccesoService accesoService;
 
     @InjectMocks private CartillaServiceImpl cartillaService;
 
     private UUID terapeutaId;
     private UUID pacienteId;
+    private UUID organizacionId;
     private Usuario terapeuta;
+    private Organizacion organizacion;
     private Paciente paciente;
 
     @BeforeEach
     void setUp() {
         terapeutaId = UUID.randomUUID();
         pacienteId = UUID.randomUUID();
-        terapeuta = Usuario.builder()
-                .id(terapeutaId)
-                .email("test@ejemplo.com")
-                .rol(RolUsuario.TERAPEUTA)
+        organizacionId = UUID.randomUUID();
+        terapeuta = Usuario.builder().id(terapeutaId).email("test@ejemplo.com").build();
+        organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
+        paciente = Paciente.builder().id(pacienteId).organizacion(organizacion).build();
+    }
+
+    private Membresia membresiaDe(RolGestion rolGestion, boolean esTerapeuta) {
+        return Membresia.builder()
+                .id(new MembresiaId(organizacionId, terapeutaId))
+                .organizacion(organizacion)
+                .usuario(terapeuta)
+                .rolGestion(rolGestion)
+                .esTerapeuta(esTerapeuta)
                 .build();
-        paciente = Paciente.builder().id(pacienteId).terapeuta(terapeuta).build();
+    }
+
+    private AccesoPaciente accesoDeEquipo() {
+        return new AccesoPaciente(paciente, membresiaDe(RolGestion.OWNER, true), false, null);
+    }
+
+    private AccesoPaciente accesoFamiliar(PermisoColaborador permiso) {
+        return new AccesoPaciente(paciente, null, false, permiso);
     }
 
     // ──────────────────────────────────────────────
-    //  CREAR (gate de rol: verificarEdicionParaUsuario)
+    //  CREAR (gate de acceso: EDITAR_CONTENIDO)
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Crear cartilla: terapeuta dueño → gate OK y queda con creador = terapeuta")
-    void crear_terapeuta_asignaCreador() {
+    @DisplayName("Crear cartilla: miembro de equipo → gate OK y queda con creador = usuario")
+    void crear_equipoDeGestion_asignaCreador() {
         Cartilla cartilla = Cartilla.builder()
                 .id(UUID.randomUUID())
                 .paciente(paciente)
@@ -91,8 +119,8 @@ class CartillaServiceTest {
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        willDoNothing().given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
         given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartilla);
 
         CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", true, null);
@@ -111,11 +139,7 @@ class CartillaServiceTest {
     @DisplayName("Crear cartilla: familiar con EDICION_LIMITADA → queda con creador = familiar")
     void crear_familiarEdicionLimitada_asignaCreador() {
         UUID familiarId = UUID.randomUUID();
-        Usuario familiar = Usuario.builder()
-                .id(familiarId)
-                .email("familiar@ejemplo.com")
-                .rol(RolUsuario.FAMILIAR)
-                .build();
+        Usuario familiar = Usuario.builder().id(familiarId).email("familiar@ejemplo.com").build();
         Cartilla cartilla = Cartilla.builder()
                 .id(UUID.randomUUID())
                 .paciente(paciente)
@@ -125,8 +149,8 @@ class CartillaServiceTest {
                 .build();
 
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-        willDoNothing().given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(familiar))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(new AccesoPaciente(paciente, null, false, PermisoColaborador.EDICION_LIMITADA));
         given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartilla);
 
         CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla F", false, null);
@@ -143,15 +167,11 @@ class CartillaServiceTest {
     @DisplayName("Crear cartilla: familiar con LECTURA → 404 genérico (no encontrado o sin permisos)")
     void crear_familiarLectura_lanzaExcepcion() {
         UUID familiarId = UUID.randomUUID();
-        Usuario familiar = Usuario.builder()
-                .id(familiarId)
-                .email("familiar@ejemplo.com")
-                .rol(RolUsuario.FAMILIAR)
-                .build();
+        Usuario familiar = Usuario.builder().id(familiarId).email("familiar@ejemplo.com").build();
 
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
         willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"))
-                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
+                .given(accesoService).exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO);
 
         CartillaRegistroDTO dto = new CartillaRegistroDTO("Cartilla A", false, null);
 
@@ -182,8 +202,8 @@ class CartillaServiceTest {
     @DisplayName("Crear cartilla: sin paradigma explícito → default TAXONOMICA")
     void crear_sinParadigma_defaultTaxonomica() {
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        willDoNothing().given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
         given(cartillaRepository.save(any(Cartilla.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -199,8 +219,8 @@ class CartillaServiceTest {
     @DisplayName("Crear cartilla: con paradigma ESQUEMATICA explícito → se respeta")
     void crear_conParadigmaEsquematica_seRespeta() {
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        willDoNothing().given(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
         given(cartillaRepository.save(any(Cartilla.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -213,30 +233,34 @@ class CartillaServiceTest {
     }
 
     // ──────────────────────────────────────────────
-    //  ACTUALIZAR (gate: creador-lookup único)
+    //  ACTUALIZAR (gate: EDITAR_CONTENIDO + findByIdAndPacienteId)
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Creador → puede actualizar su cartilla")
-    void actualizar_creador_puedeActualizar() {
+    @DisplayName("Miembro de equipo → puede actualizar la cartilla aunque no la haya creado")
+    void actualizar_equipoDeGestion_puedeActualizar() {
         UUID cartillaId = UUID.randomUUID();
+        UUID otroCreadorId = UUID.randomUUID();
+        Usuario otroCreador = Usuario.builder().id(otroCreadorId).build();
         Cartilla cartilla = Cartilla.builder()
                 .id(cartillaId)
                 .paciente(paciente)
-                .creador(terapeuta)
+                .creador(otroCreador)
                 .nombre("Nombre viejo")
                 .esPrincipal(false)
                 .build();
         Cartilla cartillaActualizada = Cartilla.builder()
                 .id(cartillaId)
                 .paciente(paciente)
-                .creador(terapeuta)
+                .creador(otroCreador)
                 .nombre("Nombre nuevo")
                 .esPrincipal(true)
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
         given(cartillaRepository.save(any(Cartilla.class))).willReturn(cartillaActualizada);
 
@@ -262,7 +286,9 @@ class CartillaServiceTest {
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
         given(cartillaRepository.save(any(Cartilla.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
@@ -289,7 +315,9 @@ class CartillaServiceTest {
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
         given(cartillaRepository.save(any(Cartilla.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
@@ -308,7 +336,9 @@ class CartillaServiceTest {
         UUID cartillaId = UUID.randomUUID();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.empty());
 
         CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nuevo nombre", false, null);
@@ -322,44 +352,15 @@ class CartillaServiceTest {
     }
 
     @Test
-    @DisplayName("Familiar con EDICION_LIMITADA que NO es creador → 404 genérico (regresión revertida)")
-    void actualizar_familiarNoCreador_lanzaExcepcion() {
-        UUID familiarId = UUID.randomUUID();
-        UUID cartillaId = UUID.randomUUID();
-        Usuario familiar = Usuario.builder()
-                .id(familiarId)
-                .email("familiar@ejemplo.com")
-                .rol(RolUsuario.FAMILIAR)
-                .build();
-
-        given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiarId))
-                .willReturn(Optional.empty());
-
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false, null);
-
-        assertThatThrownBy(() ->
-                cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "familiar@ejemplo.com"))
-                .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("no tiene permisos");
-
-        verify(cartillaRepository, never()).save(any());
-    }
-
-    @Test
     @DisplayName("Familiar con LECTURA → NO puede actualizar la cartilla (404 genérico)")
     void actualizar_familiarLectura_lanzaExcepcion() {
         UUID familiarId = UUID.randomUUID();
         UUID cartillaId = UUID.randomUUID();
-        Usuario familiar = Usuario.builder()
-                .id(familiarId)
-                .email("familiar@ejemplo.com")
-                .rol(RolUsuario.FAMILIAR)
-                .build();
+        Usuario familiar = Usuario.builder().id(familiarId).email("familiar@ejemplo.com").build();
 
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiarId))
-                .willReturn(Optional.empty());
+        willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"))
+                .given(accesoService).exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO);
 
         CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false, null);
 
@@ -377,27 +378,8 @@ class CartillaServiceTest {
         UUID cartillaId = UUID.randomUUID();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
-                .willReturn(Optional.empty());
-
-        CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false, null);
-
-        assertThatThrownBy(() ->
-                cartillaService.actualizarCartilla(pacienteId, cartillaId, dto, "test@ejemplo.com"))
-                .isInstanceOf(RecursoNoEncontradoException.class)
-                .hasMessageContaining("no tiene permisos");
-
-        verify(cartillaRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("Terapeuta en cartilla de un familiar → NO puede actualizarla (404 genérico)")
-    void actualizar_terapeutaEnCartillaDeFamiliar_lanzaExcepcion() {
-        UUID cartillaId = UUID.randomUUID();
-
-        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
-                .willReturn(Optional.empty());
+        willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"))
+                .given(accesoService).exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO);
 
         CartillaActualizacionDTO dto = new CartillaActualizacionDTO("Nombre nuevo", false, null);
 
@@ -410,22 +392,26 @@ class CartillaServiceTest {
     }
 
     // ──────────────────────────────────────────────
-    //  ELIMINAR (gate: creador-lookup único)
+    //  ELIMINAR (gate: GESTION_CLINICA + findByIdAndPacienteId)
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Creador → puede eliminar su cartilla")
-    void eliminar_creador_puedeEliminar() {
+    @DisplayName("Miembro de equipo → puede eliminar la cartilla aunque no la haya creado")
+    void eliminar_equipoDeGestion_puedeEliminar() {
         UUID cartillaId = UUID.randomUUID();
+        UUID otroCreadorId = UUID.randomUUID();
+        Usuario otroCreador = Usuario.builder().id(otroCreadorId).build();
         Cartilla cartilla = Cartilla.builder()
                 .id(cartillaId)
                 .paciente(paciente)
-                .creador(terapeuta)
+                .creador(otroCreador)
                 .nombre("Cartilla A")
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.GESTION_CLINICA))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
 
         cartillaService.eliminarCartilla(pacienteId, cartillaId, "test@ejemplo.com");
@@ -434,19 +420,15 @@ class CartillaServiceTest {
     }
 
     @Test
-    @DisplayName("No-creador → NO puede eliminar la cartilla (404 genérico)")
-    void eliminar_noCreador_lanzaExcepcion() {
+    @DisplayName("Familiar (EDICION_LIMITADA, nunca borra) → NO puede eliminar la cartilla (404 genérico)")
+    void eliminar_familiar_lanzaExcepcion() {
         UUID familiarId = UUID.randomUUID();
         UUID cartillaId = UUID.randomUUID();
-        Usuario familiar = Usuario.builder()
-                .id(familiarId)
-                .email("familiar@ejemplo.com")
-                .rol(RolUsuario.FAMILIAR)
-                .build();
+        Usuario familiar = Usuario.builder().id(familiarId).email("familiar@ejemplo.com").build();
 
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, familiarId))
-                .willReturn(Optional.empty());
+        willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"))
+                .given(accesoService).exigirCapacidad(pacienteId, familiar, Capacidad.GESTION_CLINICA);
 
         assertThatThrownBy(() ->
                 cartillaService.eliminarCartilla(pacienteId, cartillaId, "familiar@ejemplo.com"))
@@ -460,14 +442,16 @@ class CartillaServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Actualizar a principal: terapeuta responsable → desmarca las otras ANTES de guardar")
-    void actualizar_terapeutaResponsable_desmarcaOtrasAntesDeGuardar() {
+    @DisplayName("Actualizar a principal: miembro de equipo → desmarca las otras ANTES de guardar")
+    void actualizar_equipoDeGestion_desmarcaOtrasAntesDeGuardar() {
         UUID cartillaId = UUID.randomUUID();
         Cartilla cartilla = Cartilla.builder()
                 .id(cartillaId).paciente(paciente).creador(terapeuta).nombre("A").esPrincipal(false).build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
         given(cartillaRepository.save(cartilla)).willReturn(cartilla);
 
@@ -481,23 +465,24 @@ class CartillaServiceTest {
     }
 
     @Test
-    @DisplayName("Actualizar a principal: creador que NO es el terapeuta responsable → 403 y sin escrituras")
-    void actualizar_creadorNoResponsable_accesoDenegado() {
+    @DisplayName("Actualizar a principal: familiar con EDICION_LIMITADA (sin acceso de equipo) → 403 y sin escrituras")
+    void actualizar_familiarSinEquipo_accesoDenegado() {
         UUID cartillaId = UUID.randomUUID();
         UUID creadorId = UUID.randomUUID();
-        Usuario familiar = Usuario.builder()
-                .id(creadorId).email("familiar@ejemplo.com").rol(RolUsuario.FAMILIAR).build();
+        Usuario familiar = Usuario.builder().id(creadorId).email("familiar@ejemplo.com").build();
         Cartilla cartilla = Cartilla.builder()
                 .id(cartillaId).paciente(paciente).creador(familiar).nombre("F").esPrincipal(false).build();
 
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, creadorId))
+        given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoFamiliar(PermisoColaborador.EDICION_LIMITADA));
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
 
         assertThatThrownBy(() -> cartillaService.actualizarCartilla(pacienteId, cartillaId,
                 new CartillaActualizacionDTO("Principal", true, null), "familiar@ejemplo.com"))
                 .isInstanceOf(AccesoDenegadoException.class)
-                .hasMessageContaining("Solo el terapeuta responsable");
+                .hasMessageContaining("equipo");
 
         verify(cartillaRepository, never()).desmarcarOtrasPrincipalesDe(any(), any());
         verify(cartillaRepository, never()).save(any());
@@ -515,9 +500,11 @@ class CartillaServiceTest {
                 .id(comunId).paciente(paciente).creador(terapeuta).nombre("C").esPrincipal(false).build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(principalId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(principalId, pacienteId))
                 .willReturn(Optional.of(principal));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(comunId, pacienteId, terapeutaId))
+        given(cartillaRepository.findByIdAndPacienteId(comunId, pacienteId))
                 .willReturn(Optional.of(comun));
         given(cartillaRepository.save(any(Cartilla.class))).willAnswer(i -> i.getArgument(0));
 
@@ -535,11 +522,11 @@ class CartillaServiceTest {
     @DisplayName("Crear con esPrincipal=true: desmarca las principales ANTES de guardar; familiar → 403")
     void crear_principal_desmarcaAntesDeGuardar_yFamiliarDenegado() {
         UUID familiarId = UUID.randomUUID();
-        Usuario familiar = Usuario.builder()
-                .id(familiarId).email("familiar@ejemplo.com").rol(RolUsuario.FAMILIAR).build();
+        Usuario familiar = Usuario.builder().id(familiarId).email("familiar@ejemplo.com").build();
 
         given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(familiar))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoFamiliar(PermisoColaborador.EDICION_LIMITADA));
 
         assertThatThrownBy(() -> cartillaService.crearCartilla(
                 pacienteId, new CartillaRegistroDTO("X", true, null), "familiar@ejemplo.com"))
@@ -548,7 +535,8 @@ class CartillaServiceTest {
         verify(cartillaRepository, never()).save(any());
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
         given(cartillaRepository.save(any(Cartilla.class))).willAnswer(i -> i.getArgument(0));
 
         cartillaService.crearCartilla(pacienteId, new CartillaRegistroDTO("P", true, null), "test@ejemplo.com");
@@ -559,7 +547,7 @@ class CartillaServiceTest {
     }
 
     // ──────────────────────────────────────────────
-    //  LECTURA (sin cambios: abierta a cualquier lector)
+    //  LECTURA (sin cambios: abierta a cualquier lector con acceso LEER)
     // ──────────────────────────────────────────────
 
     @Test
@@ -571,7 +559,8 @@ class CartillaServiceTest {
                 .nombre("A").esPrincipal(true).build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER))
+                .willReturn(accesoDeEquipo());
         given(cartillaRepository.findByPacienteId(pacienteId)).willReturn(List.of(c1, c2));
 
         List<CartillaResponseDTO> resultado = cartillaService.obtenerCartillasDePaciente(pacienteId, "test@ejemplo.com");
@@ -638,7 +627,8 @@ class CartillaServiceTest {
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER))
+                .willReturn(accesoDeEquipo());
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId)).willReturn(List.of(categoria));
         given(itemCartillaRepository.findByCategoriaIdInOrderByOrdenVisualAsc(List.of(categoria.getId())))
@@ -703,7 +693,8 @@ class CartillaServiceTest {
                 .build();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER))
+                .willReturn(accesoDeEquipo());
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByCartillaIdOrderByOrdenAsc(cartillaId)).willReturn(List.of(categoria));
         given(itemCartillaRepository.findByCategoriaIdInOrderByOrdenVisualAsc(List.of(categoria.getId())))
@@ -724,7 +715,8 @@ class CartillaServiceTest {
         UUID cartillaId = UUID.randomUUID();
 
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteService.pacienteLegibleParaUsuario(eq(pacienteId), eq(terapeuta))).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER))
+                .willReturn(accesoDeEquipo());
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> cartillaService.obtenerCartillaDetalle(pacienteId, cartillaId, "test@ejemplo.com"))
@@ -743,7 +735,7 @@ class CartillaServiceTest {
         Cartilla cartilla = Cartilla.builder().id(cartillaId).paciente(paciente).creador(terapeuta)
                 .nombre("A").esPrincipal(true).build();
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, terapeuta)).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER)).willReturn(accesoDeEquipo());
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
 
         CartillaResponseDTO r = cartillaService.establecerCartillaPrincipal(pacienteId, cartillaId, "test@ejemplo.com");
@@ -761,7 +753,7 @@ class CartillaServiceTest {
         Cartilla cartilla = Cartilla.builder().id(cartillaId).paciente(paciente).creador(terapeuta)
                 .nombre("B").esPrincipal(false).build();
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, terapeuta)).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER)).willReturn(accesoDeEquipo());
         given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)).willReturn(Optional.of(cartilla));
         given(cartillaRepository.save(any(Cartilla.class))).willAnswer(i -> i.getArgument(0));
 
@@ -776,15 +768,15 @@ class CartillaServiceTest {
     @Test
     @DisplayName("establecerCartillaPrincipal: un familiar vinculado → AccesoDenegadoException y no toca la base")
     void establecerCartillaPrincipal_familiar_403() {
-        Usuario familiar = Usuario.builder().id(UUID.randomUUID()).email("f@ejemplo.com")
-                .rol(RolUsuario.FAMILIAR).build();
+        Usuario familiar = Usuario.builder().id(UUID.randomUUID()).email("f@ejemplo.com").build();
         UUID cartillaId = UUID.randomUUID();
         given(usuarioRepository.findByEmail("f@ejemplo.com")).willReturn(Optional.of(familiar));
-        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar)).willReturn(paciente);
+        given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
+                .willReturn(accesoFamiliar(PermisoColaborador.EDICION_LIMITADA));
 
         assertThatThrownBy(() -> cartillaService.establecerCartillaPrincipal(pacienteId, cartillaId, "f@ejemplo.com"))
                 .isInstanceOf(AccesoDenegadoException.class)
-                .hasMessageContaining("Solo el terapeuta responsable");
+                .hasMessageContaining("equipo");
         verify(cartillaRepository, never()).findByIdAndPacienteId(any(), any());
         verify(cartillaRepository, never()).desmarcarOtrasPrincipalesDe(any(), any());
         verify(cartillaRepository, never()).save(any());

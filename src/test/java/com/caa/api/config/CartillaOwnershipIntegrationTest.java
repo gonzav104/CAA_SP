@@ -15,19 +15,25 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.PictogramaGlobal;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
+import com.caa.api.repositories.MembresiaRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
+import com.caa.api.repositories.PacienteTerapeutaRepository;
 import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
@@ -47,10 +53,12 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
- * Ownership de cartillas por CREADOR (la persona que hizo el POST) demostrado vía HTTP:
- *  - crear: gate de rol (verificarEdicionParaUsuario) → queda .creador(usuario)
- *  - escribir (PUT/DELETE cartilla + categorías + items): SOLO el creador de esa cartilla
- *  - escenario 7: un terapeuta dueño del paciente NO toca una cartilla creada por un familiar
+ * Acceso a cartillas vía el paciente (no vía {@code creador_id}) demostrado vía HTTP, migrado a
+ * {@code AccesoService} (tarea 3.3, design-part2 §11.2, R2):
+ *  - crear: gate de acceso (EDITAR_CONTENIDO) → queda .creador(usuario)
+ *  - escribir (PUT/DELETE cartilla + categorías + items): cualquier miembro de equipo o familiar
+ *    con EDICION_LIMITADA, SIN importar quién creó esa cartilla
+ *  - escenario 7: un miembro de equipo puede tocar una cartilla creada por un familiar
  *  - escenario 9: dos creadores distintos pueden marcar su cartilla como principal
  */
 @SpringBootTest
@@ -65,7 +73,7 @@ import org.springframework.web.context.WebApplicationContext;
         "cloudinary.api-secret=test-api-secret",
         "resend.api-key=test-resend-api-key"
 })
-@DisplayName("Cartillas — ownership por creador (HTTP)")
+@DisplayName("Cartillas — acceso vía AccesoService (HTTP)")
 class CartillaOwnershipIntegrationTest {
 
     @Autowired
@@ -87,6 +95,12 @@ class CartillaOwnershipIntegrationTest {
     private PacienteFamiliarRepository pacienteFamiliarRepository;
 
     @MockitoBean
+    private MembresiaRepository membresiaRepository;
+
+    @MockitoBean
+    private PacienteTerapeutaRepository pacienteTerapeutaRepository;
+
+    @MockitoBean
     private CartillaRepository cartillaRepository;
 
     @MockitoBean
@@ -100,11 +114,13 @@ class CartillaOwnershipIntegrationTest {
 
     private MockMvc mockMvc;
     private UUID pacienteId;
+    private UUID organizacionId;
     private UUID cartillaId;
     private UUID categoriaId;
     private Usuario terapeuta;
     private Usuario familiarEdicion;
     private Usuario familiarLectura;
+    private Organizacion organizacion;
     private Paciente paciente;
     private Cartilla cartillaDelTerapeuta;
     private Categoria categoria;
@@ -120,6 +136,7 @@ class CartillaOwnershipIntegrationTest {
                 .build();
 
         pacienteId = UUID.randomUUID();
+        organizacionId = UUID.randomUUID();
         cartillaId = UUID.randomUUID();
         categoriaId = UUID.randomUUID();
 
@@ -136,8 +153,9 @@ class CartillaOwnershipIntegrationTest {
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Familiar Lectura").rol(RolUsuario.FAMILIAR).build();
 
+        organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
         paciente = Paciente.builder()
-                .id(pacienteId).terapeuta(terapeuta)
+                .id(pacienteId).organizacion(organizacion)
                 .nombre("Nico").apellido("Perez").build();
 
         cartillaDelTerapeuta = Cartilla.builder()
@@ -156,16 +174,28 @@ class CartillaOwnershipIntegrationTest {
         given(usuarioRepository.findByEmail("edicion@test.com")).willReturn(Optional.of(familiarEdicion));
         given(usuarioRepository.findByEmail("lectura@test.com")).willReturn(Optional.of(familiarLectura));
 
-        // Helpers de acceso (PacienteServiceImpl real)
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
-                .willReturn(Optional.of(paciente));
+        // Helpers de acceso (AccesoServiceImpl real)
+        given(pacienteRepository.findById(pacienteId)).willReturn(Optional.of(paciente));
+        Membresia terapeutaOwner = Membresia.builder()
+                .id(new MembresiaId(organizacionId, terapeuta.getId()))
+                .organizacion(organizacion)
+                .usuario(terapeuta)
+                .rolGestion(RolGestion.OWNER)
+                .esTerapeuta(true)
+                .build();
+        given(membresiaRepository.findById(new MembresiaId(organizacionId, terapeuta.getId())))
+                .willReturn(Optional.of(terapeutaOwner));
+        given(membresiaRepository.findById(new MembresiaId(organizacionId, familiarEdicion.getId())))
+                .willReturn(Optional.empty());
+        given(membresiaRepository.findById(new MembresiaId(organizacionId, familiarLectura.getId())))
+                .willReturn(Optional.empty());
         given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarEdicion.getId()))
                 .willReturn(Optional.of(vinculo(familiarEdicion, PermisoColaborador.EDICION_LIMITADA)));
         given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarLectura.getId()))
                 .willReturn(Optional.of(vinculo(familiarLectura, PermisoColaborador.LECTURA)));
 
-        // El terapeuta es creador de su cartilla
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeuta.getId()))
+        // Acceso deriva del paciente: la cartilla del terapeuta se resuelve por findByIdAndPacienteId
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartillaDelTerapeuta));
     }
 
@@ -179,12 +209,12 @@ class CartillaOwnershipIntegrationTest {
     }
 
     // ──────────────────────────────────────────────
-    //  CREAR (gate de rol + .creador(usuario))
+    //  CREAR (gate de acceso + .creador(usuario))
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("POST cartilla: terapeuta dueño → 201 y queda como CREADOR")
-    void postCartilla_terapeuta_201_quedaCreador() throws Exception {
+    @DisplayName("POST cartilla: miembro de equipo → 201 y queda como CREADOR")
+    void postCartilla_equipoDeGestion_201_quedaCreador() throws Exception {
         Cartilla guardada = Cartilla.builder()
                 .id(UUID.randomUUID()).paciente(paciente).creador(terapeuta)
                 .nombre("Tablero A").esPrincipal(true).build();
@@ -333,12 +363,12 @@ class CartillaOwnershipIntegrationTest {
     }
 
     // ──────────────────────────────────────────────
-    //  PUT/DELETE CARTILLA (gate: creador de ESA cartilla)
+    //  PUT/DELETE CARTILLA (gate: acceso al paciente, nunca creador)
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("PUT cartilla: el CREADOR puede actualizarla → 200")
-    void putCartilla_creador_200() throws Exception {
+    @DisplayName("PUT cartilla: miembro de equipo puede actualizarla → 200")
+    void putCartilla_equipoDeGestion_200() throws Exception {
         given(cartillaRepository.save(any(Cartilla.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -352,10 +382,45 @@ class CartillaOwnershipIntegrationTest {
     }
 
     @Test
-    @DisplayName("PUT cartilla: familiar EDICION_LIMITADA que NO es el creador → 404 (regresión revertida)")
-    void putCartilla_familiarNoCreador_404() throws Exception {
+    @DisplayName("PUT cartilla: miembro de equipo puede actualizar una cartilla creada por un FAMILIAR (R2)")
+    void putCartilla_equipoDeGestion_200_cartillaCreadaPorFamiliar() throws Exception {
+        UUID cartillaDelFamiliarId = UUID.randomUUID();
+        Cartilla cartillaDelFamiliar = Cartilla.builder()
+                .id(cartillaDelFamiliarId).paciente(paciente).creador(familiarEdicion)
+                .nombre("Tablero del familiar").esPrincipal(false).build();
+        given(cartillaRepository.findByIdAndPacienteId(cartillaDelFamiliarId, pacienteId))
+                .willReturn(Optional.of(cartillaDelFamiliar));
+        given(cartillaRepository.save(any(Cartilla.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        mockMvc.perform(put("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaDelFamiliarId)
+                        .header("Authorization", "Bearer " + tokenTerapeuta)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\": \"Editada por el equipo\", \"esPrincipal\": false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nombre").value("Editada por el equipo"))
+                .andExpect(jsonPath("$.creadorId").value(familiarEdicion.getId().toString()));
+    }
+
+    @Test
+    @DisplayName("PUT cartilla: familiar con EDICION_LIMITADA puede actualizar aunque NO sea el creador (R2)")
+    void putCartilla_familiarEdicion_200_sinSerCreador() throws Exception {
+        given(cartillaRepository.save(any(Cartilla.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
         mockMvc.perform(put("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaId)
                         .header("Authorization", "Bearer " + tokenFamiliarEdicion)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\": \"Edicion ajena\", \"esPrincipal\": false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nombre").value("Edicion ajena"));
+    }
+
+    @Test
+    @DisplayName("PUT cartilla: familiar con LECTURA (sin EDITAR_CONTENIDO) → 404")
+    void putCartilla_familiarLectura_404() throws Exception {
+        mockMvc.perform(put("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaId)
+                        .header("Authorization", "Bearer " + tokenFamiliarLectura)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"nombre\": \"Intento ajeno\", \"esPrincipal\": false}"))
                 .andExpect(status().isNotFound());
@@ -364,16 +429,13 @@ class CartillaOwnershipIntegrationTest {
     }
 
     @Test
-    @DisplayName("PUT cartilla: terapeuta dueño del paciente pero NO creador (cartilla del familiar) → 404")
-    void putCartilla_terapeutaEnCartillaDeFamiliar_404() throws Exception {
-        UUID cartillaDelFamiliarId = UUID.randomUUID();
-        // La cartilla del familiar existe y el terapeuta tiene acceso al paciente,
-        // pero NO es su creador → el look-up único queda vacío → 404.
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(
-                cartillaDelFamiliarId, pacienteId, terapeuta.getId()))
+    @DisplayName("PUT cartilla: cartilla de OTRO paciente → 404")
+    void putCartilla_cartillaDeOtroPaciente_404() throws Exception {
+        UUID cartillaDeOtroPacienteId = UUID.randomUUID();
+        given(cartillaRepository.findByIdAndPacienteId(cartillaDeOtroPacienteId, pacienteId))
                 .willReturn(Optional.empty());
 
-        mockMvc.perform(put("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaDelFamiliarId)
+        mockMvc.perform(put("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaDeOtroPacienteId)
                         .header("Authorization", "Bearer " + tokenTerapeuta)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"nombre\": \"Intento\", \"esPrincipal\": false}"))
@@ -383,8 +445,8 @@ class CartillaOwnershipIntegrationTest {
     }
 
     @Test
-    @DisplayName("DELETE cartilla: el CREADOR puede eliminarla → 204")
-    void deleteCartilla_creador_204() throws Exception {
+    @DisplayName("DELETE cartilla: miembro de equipo puede eliminarla → 204")
+    void deleteCartilla_equipoDeGestion_204() throws Exception {
         mockMvc.perform(delete("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaId)
                         .header("Authorization", "Bearer " + tokenTerapeuta))
                 .andExpect(status().isNoContent());
@@ -393,8 +455,8 @@ class CartillaOwnershipIntegrationTest {
     }
 
     @Test
-    @DisplayName("DELETE cartilla: no-creador → 404 y NO elimina")
-    void deleteCartilla_noCreador_404() throws Exception {
+    @DisplayName("DELETE cartilla: familiar (sin GESTION_CLINICA) → 404 y NO elimina")
+    void deleteCartilla_familiar_404() throws Exception {
         mockMvc.perform(delete("/api/pacientes/{pacienteId}/cartillas/{cartillaId}", pacienteId, cartillaId)
                         .header("Authorization", "Bearer " + tokenFamiliarEdicion))
                 .andExpect(status().isNotFound());
@@ -403,12 +465,12 @@ class CartillaOwnershipIntegrationTest {
     }
 
     // ──────────────────────────────────────────────
-    //  CATEGORÍAS (gate: creador de la cartilla padre)
+    //  CATEGORÍAS (gate: acceso al paciente que es dueño de la cartilla)
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("POST categoría: el creador de la cartilla → 201")
-    void postCategoria_creadorDeCartilla_201() throws Exception {
+    @DisplayName("POST categoría: miembro de equipo → 201")
+    void postCategoria_equipoDeGestion_201() throws Exception {
         Categoria guardada = Categoria.builder()
                 .id(UUID.randomUUID()).cartilla(cartillaDelTerapeuta)
                 .nombre("Comida").colorHex("#E0E0E0").orden(0).build();
@@ -425,11 +487,11 @@ class CartillaOwnershipIntegrationTest {
     }
 
     @Test
-    @DisplayName("POST categoría: familiar vinculado que NO creó la cartilla → 404")
-    void postCategoria_familiarNoCreador_404() throws Exception {
+    @DisplayName("POST categoría: familiar con LECTURA (sin EDITAR_CONTENIDO) → 404")
+    void postCategoria_familiarLectura_404() throws Exception {
         mockMvc.perform(post("/api/pacientes/{pacienteId}/cartillas/{cartillaId}/categorias",
                         pacienteId, cartillaId)
-                        .header("Authorization", "Bearer " + tokenFamiliarEdicion)
+                        .header("Authorization", "Bearer " + tokenFamiliarLectura)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"nombre\": \"Comida\", \"colorHex\": \"#E0E0E0\"}"))
                 .andExpect(status().isNotFound());
@@ -438,12 +500,12 @@ class CartillaOwnershipIntegrationTest {
     }
 
     // ──────────────────────────────────────────────
-    //  ITEMS (gate: creador de la cartilla padre, antes del XOR)
+    //  ITEMS (gate: acceso al paciente, antes del XOR)
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("PUT item: el creador de la cartilla → 200")
-    void putItem_creadorDeCartilla_200() throws Exception {
+    @DisplayName("PUT item: miembro de equipo → 200")
+    void putItem_equipoDeGestion_200() throws Exception {
         UUID itemId = UUID.randomUUID();
         UUID globalId = UUID.randomUUID();
         PictogramaGlobal global = PictogramaGlobal.builder().id(globalId).etiqueta("Saludo").build();
@@ -470,17 +532,17 @@ class CartillaOwnershipIntegrationTest {
     }
 
     @Test
-    @DisplayName("PUT item: no-creador de la cartilla → 404 ANTES de evaluar el XOR")
-    void putItem_noCreador_404() throws Exception {
+    @DisplayName("PUT item: familiar con LECTURA (sin EDITAR_CONTENIDO) → 404 ANTES de evaluar el XOR")
+    void putItem_familiarLectura_404() throws Exception {
         UUID itemId = UUID.randomUUID();
 
-        // Dto con AMBOS recursos (violaría el XOR), pero el gate de creador gana antes → 404
+        // Dto con AMBOS recursos (violaría el XOR), pero el gate de acceso gana antes → 404
         UUID globalId = UUID.randomUUID();
         UUID customId = UUID.randomUUID();
 
         mockMvc.perform(put("/api/pacientes/{pacienteId}/cartillas/{cartillaId}/categorias/{categoriaId}/items/{itemId}",
                         pacienteId, cartillaId, categoriaId, itemId)
-                        .header("Authorization", "Bearer " + tokenFamiliarEdicion)
+                        .header("Authorization", "Bearer " + tokenFamiliarLectura)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"textoHablado\": \"Hola\", \"ordenVisual\": 1, \"recursoGlobalId\": \""
                                 + globalId + "\", \"recursoCustomId\": \"" + customId + "\"}"))
@@ -490,18 +552,18 @@ class CartillaOwnershipIntegrationTest {
     }
 
     // ──────────────────────────────────────────────
-    //  esPrincipal único por paciente: solo el terapeuta responsable lo establece
+    //  esPrincipal único por paciente: solo un miembro de equipo lo establece
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Terapeuta responsable marca principal → 200; familiar con EDICION_LIMITADA intenta lo mismo → 403")
-    void soloTerapeutaResponsable_estableceLaPrincipal() throws Exception {
+    @DisplayName("Miembro de equipo marca principal → 200; familiar con EDICION_LIMITADA intenta lo mismo → 403")
+    void soloEquipoDeGestion_estableceLaPrincipal() throws Exception {
         UUID cartillaDelFamiliarId = UUID.randomUUID();
         Cartilla cartillaDelFamiliar = Cartilla.builder()
                 .id(cartillaDelFamiliarId).paciente(paciente).creador(familiarEdicion)
                 .nombre("Tablero del familiar").esPrincipal(false).build();
 
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaDelFamiliarId, pacienteId, familiarEdicion.getId()))
+        given(cartillaRepository.findByIdAndPacienteId(cartillaDelFamiliarId, pacienteId))
                 .willReturn(Optional.of(cartillaDelFamiliar));
         given(cartillaRepository.save(any(Cartilla.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));

@@ -506,8 +506,16 @@ class QueryCountRegressionIntegrationTest {
                 .build());
     }
 
+    /**
+     * Crea el paciente dentro de una organización NUEVA cuyo {@code terapeuta} es OWNER
+     * (esTerapeuta=true), para que el acceso vía {@code AccesoService} (tarea 3.3, design-part2
+     * §11.2) resuelva acceso de equipo igual que antes lo hacía {@code findByIdAndTerapeutaId}.
+     */
     private Paciente crearPaciente(Usuario terapeuta, String nombre, String apellido) {
+        Organizacion organizacion = crearOrganizacion(terapeuta, nombre + " Org");
+        crearMembresia(organizacion, terapeuta, RolGestion.OWNER, true);
         return pacienteRepository.save(Paciente.builder()
+                .organizacion(organizacion)
                 .terapeuta(terapeuta)
                 .nombre(nombre)
                 .apellido(apellido)

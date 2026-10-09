@@ -16,14 +16,15 @@ import com.caa.api.models.Paciente;
 import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.PictogramaGlobal;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.AccesoService;
+import com.caa.api.services.AccesoService.AccesoPaciente;
+import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.CartillaService;
-import com.caa.api.services.PacienteService;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -43,7 +44,7 @@ public class CartillaServiceImpl implements CartillaService {
     private final UsuarioRepository usuarioRepository;
     private final CategoriaRepository categoriaRepository;
     private final ItemCartillaRepository itemCartillaRepository;
-    private final PacienteService pacienteService;
+    private final AccesoService accesoService;
 
     @Override
     @Transactional
@@ -51,14 +52,14 @@ public class CartillaServiceImpl implements CartillaService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Gate de rol: terapeuta dueño del paciente o familiar con EDICION_LIMITADA
-        pacienteService.verificarEdicionParaUsuario(pacienteId, usuario);
-        Paciente paciente = pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
+        // Gate de acceso: EDITAR_CONTENIDO (equipo o familiar con EDICION_LIMITADA) — design-part2 §11.2
+        AccesoPaciente acceso = accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
+        Paciente paciente = acceso.paciente();
 
         boolean esPrincipal = Boolean.TRUE.equals(dto.esPrincipal());
         if (esPrincipal) {
-            // Permiso ANTES de cualquier escritura: solo el terapeuta responsable fija la principal
-            exigirTerapeutaResponsable(usuario, paciente);
+            // Permiso ANTES de cualquier escritura: solo un miembro de equipo fija la principal
+            exigirEquipo(acceso);
             // ORDEN CRÍTICO: el UPDATE masivo debe llegar a la base ANTES de escribir la nueva
             // principal. Si hubiera un INSERT pendiente, Hibernate lo vaciaría (auto-flush) antes
             // del UPDATE sobre la misma tabla y el índice único parcial vería dos principales.
@@ -83,7 +84,7 @@ public class CartillaServiceImpl implements CartillaService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
 
         return cartillaRepository.findByPacienteId(pacienteId).stream()
                 .map(this::toResponseDTO)
@@ -96,7 +97,7 @@ public class CartillaServiceImpl implements CartillaService {
         Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
 
         Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
@@ -140,17 +141,17 @@ public class CartillaServiceImpl implements CartillaService {
         Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Ownership por creador: solo quien creó ESTA cartilla puede modificarla
-        Cartilla cartilla = cartillaRepository
-                .findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        AccesoPaciente acceso = accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
+        // Acceso deriva del paciente, nunca de quién creó ESTA cartilla (design-part2 §11.2, R2)
+        Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         // Solo un CAMBIO real del valor es una operación de configuración del paciente;
         // reenviar el mismo valor no tiene efectos ni requiere permiso adicional.
         boolean cambiaPrincipal = dto.esPrincipal() != null && dto.esPrincipal() != cartilla.isEsPrincipal();
         if (cambiaPrincipal) {
             // Permiso ANTES de cualquier escritura (fijar la principal o quitar la actual)
-            exigirTerapeutaResponsable(usuario, cartilla.getPaciente());
+            exigirEquipo(acceso);
             if (dto.esPrincipal()) {
                 // ORDEN CRÍTICO: desmarcar las otras ANTES de tocar la entidad gestionada (incluido
                 // setNombre) para que el flush posterior nunca escriba dos principales a la vez.
@@ -179,10 +180,10 @@ public class CartillaServiceImpl implements CartillaService {
         Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // 1) Acceso al paciente (terapeuta ajeno o familiar sin vínculo → 404)
-        Paciente paciente = pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
-        // 2) Solo el terapeuta responsable (un familiar vinculado → 403)
-        exigirTerapeutaResponsable(usuario, paciente);
+        // 1) Acceso al paciente (sin acceso → 404)
+        AccesoPaciente acceso = accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
+        // 2) Solo un miembro de equipo (un familiar vinculado → 403)
+        exigirEquipo(acceso);
         // 3) La cartilla debe pertenecer al paciente, sin importar quién la creó
         Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
@@ -207,22 +208,19 @@ public class CartillaServiceImpl implements CartillaService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Ownership por creador: solo quien creó ESTA cartilla puede eliminarla
-        Cartilla cartilla = cartillaRepository
-                .findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        // Acceso clínico (GESTION_CLINICA), nunca creador_id (design-part2 §11.2, R2)
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
+        Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         cartillaRepository.delete(cartilla);
     }
 
-    /** Solo el terapeuta responsable del paciente puede establecer o quitar la cartilla principal. */
-    private void exigirTerapeutaResponsable(Usuario usuario, Paciente paciente) {
-        boolean esResponsable = usuario.getRol() == RolUsuario.TERAPEUTA
-                && paciente.getTerapeuta() != null
-                && usuario.getId().equals(paciente.getTerapeuta().getId());
-        if (!esResponsable) {
+    /** Solo un miembro de equipo (gestión OWNER/ADMIN o clínico asignado) fija o quita la cartilla principal. */
+    private void exigirEquipo(AccesoPaciente acceso) {
+        if (!acceso.esEquipo()) {
             throw new AccesoDenegadoException(
-                    "Solo el terapeuta responsable del paciente puede establecer la cartilla principal");
+                    "Solo un miembro del equipo del paciente puede establecer la cartilla principal");
         }
     }
 

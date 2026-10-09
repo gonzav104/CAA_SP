@@ -7,10 +7,13 @@ import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.PictogramaGlobal;
-import com.caa.api.models.RolUsuario;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
@@ -18,6 +21,8 @@ import com.caa.api.repositories.ItemCartillaRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.AccesoService.AccesoPaciente;
+import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.impl.ItemCartillaServiceImpl;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,8 +42,14 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+/**
+ * Tarea 3.4: migrado de ownership por creador ({@code cartillaRepository.findByIdAndPacienteIdAndCreadorId})
+ * a {@code AccesoService.exigirCapacidad(EDITAR_CONTENIDO)} + {@code cartillaRepository.findByIdAndPacienteId}
+ * (design-part2 §11.2, R2). La regla XOR (recursoGlobal/recursoCustom) y el ownership del
+ * pictograma custom sobre el paciente quedan sin cambios.
+ */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("ItemCartillaService — Tests unitarios (XOR + ownership por creador)")
+@DisplayName("ItemCartillaService — Tests unitarios (XOR + AccesoService)")
 class ItemCartillaServiceTest {
 
     @Mock private ItemCartillaRepository itemCartillaRepository;
@@ -47,16 +58,18 @@ class ItemCartillaServiceTest {
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private PictogramaGlobalRepository pictogramaGlobalRepository;
     @Mock private PictogramaCustomRepository pictogramaCustomRepository;
-    @Mock private PacienteService pacienteService;
+    @Mock private AccesoService accesoService;
 
     @InjectMocks private ItemCartillaServiceImpl itemCartillaService;
 
     private UUID terapeutaId;
     private UUID pacienteId;
+    private UUID organizacionId;
     private UUID cartillaId;
     private UUID categoriaId;
     private UUID itemId;
     private Usuario terapeuta;
+    private Organizacion organizacion;
     private Paciente paciente;
     private Cartilla cartilla;
     private Categoria categoria;
@@ -65,28 +78,44 @@ class ItemCartillaServiceTest {
     void setUp() {
         terapeutaId = UUID.randomUUID();
         pacienteId = UUID.randomUUID();
+        organizacionId = UUID.randomUUID();
         cartillaId = UUID.randomUUID();
         categoriaId = UUID.randomUUID();
         itemId = UUID.randomUUID();
-        terapeuta = Usuario.builder().id(terapeutaId).email("test@ejemplo.com").rol(RolUsuario.TERAPEUTA).build();
-        paciente = Paciente.builder().id(pacienteId).terapeuta(terapeuta).build();
+        terapeuta = Usuario.builder().id(terapeutaId).email("test@ejemplo.com").build();
+        organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
+        paciente = Paciente.builder().id(pacienteId).organizacion(organizacion).build();
         cartilla = Cartilla.builder()
                 .id(cartillaId).paciente(paciente).creador(terapeuta).nombre("Cartilla").esPrincipal(false).build();
         categoria = Categoria.builder().id(categoriaId).cartilla(cartilla).nombre("Acciones").build();
     }
 
+    private Membresia membresiaDe(RolGestion rolGestion, boolean esTerapeuta) {
+        return Membresia.builder()
+                .id(new MembresiaId(organizacionId, terapeutaId))
+                .organizacion(organizacion)
+                .usuario(terapeuta)
+                .rolGestion(rolGestion)
+                .esTerapeuta(esTerapeuta)
+                .build();
+    }
+
+    private AccesoPaciente accesoDeEquipo() {
+        return new AccesoPaciente(paciente, membresiaDe(RolGestion.OWNER, true), false, null);
+    }
+
     // ──────────────────────────────────────────────
-    //  OWNERSHIP: gate de creador de la cartilla
+    //  ACCESO: gate de AccesoService + cartilla del paciente
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("No-creador de la cartilla → 404 genérico ANTES de la regla XOR")
-    void crear_noCreador_lanzaExcepcion() {
+    @DisplayName("Sin acceso de EDITAR_CONTENIDO al paciente → 404 genérico ANTES de la regla XOR")
+    void crear_sinAcceso_lanzaExcepcion() {
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
-                .willReturn(Optional.empty());
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
-        // Aunque el dto viole XOR (ambos null), el gate de creador gana
+        // Aunque el dto viole XOR (ambos null), el gate de acceso gana
         ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, null, null, null, null);
 
         assertThatThrownBy(() ->
@@ -98,10 +127,31 @@ class ItemCartillaServiceTest {
     }
 
     @Test
-    @DisplayName("Creador de la cartilla → puede actualizar el item")
-    void actualizar_creadorDeCartilla_puedeActualizar() {
+    @DisplayName("Cartilla inexistente o de otro paciente → 404 genérico ANTES de la regla XOR")
+    void crear_cartillaInexistente_lanzaExcepcion() {
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
+                .willReturn(Optional.empty());
+
+        ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, null, null, null, null);
+
+        assertThatThrownBy(() ->
+                itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com"))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("no tiene permisos");
+
+        verify(itemCartillaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Miembro de equipo → puede actualizar el item aunque no haya creado la cartilla")
+    void actualizar_equipoDeGestion_puedeActualizar() {
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId))
                 .willReturn(Optional.of(categoria));
@@ -126,10 +176,12 @@ class ItemCartillaServiceTest {
     }
 
     @Test
-    @DisplayName("Creador de la cartilla → puede eliminar el item")
-    void eliminar_creadorDeCartilla_puedeEliminar() {
+    @DisplayName("Miembro de equipo → puede eliminar el item aunque no haya creado la cartilla")
+    void eliminar_equipoDeGestion_puedeEliminar() {
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId))
                 .willReturn(Optional.of(categoria));
@@ -142,10 +194,12 @@ class ItemCartillaServiceTest {
     }
 
     @Test
-    @DisplayName("No-creador de la cartilla → NO puede eliminar el item (404 genérico)")
-    void eliminar_noCreador_lanzaExcepcion() {
+    @DisplayName("Cartilla inexistente o de otro paciente → NO puede eliminar el item (404 genérico)")
+    void eliminar_cartillaInexistente_lanzaExcepcion() {
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.empty());
 
         assertThatThrownBy(() ->
@@ -163,7 +217,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Item sin recurso (ninguno) → lanza excepción por XOR")
     void crear_sinRecurso_lanzaXor() {
-        prepararCreador();
+        prepararAcceso();
 
         ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, null, null, null, null, null);
 
@@ -178,7 +232,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Item con AMBOS recursos → lanza excepción por XOR")
     void crear_ambosRecursos_lanzaXor() {
-        prepararCreador();
+        prepararAcceso();
 
         ItemCartillaRegistroDTO dto = new ItemCartillaRegistroDTO("Hola", 1, UUID.randomUUID(), UUID.randomUUID(), null, null, null);
 
@@ -191,7 +245,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Item con recursoCustom de OTRO paciente → lanza excepción (ownership del recurso)")
     void crear_customDeOtroPaciente_lanzaExcepcion() {
-        prepararCreador();
+        prepararAcceso();
 
         UUID customId = UUID.randomUUID();
         UUID otroPacienteId = UUID.randomUUID();
@@ -217,7 +271,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Item con recursoGlobal válido → crea correctamente")
     void crear_conRecursoGlobal_creaCorrectamente() {
-        prepararCreador();
+        prepararAcceso();
 
         UUID globalId = UUID.randomUUID();
         PictogramaGlobal global = PictogramaGlobal.builder().id(globalId).etiqueta("Saludo").build();
@@ -246,7 +300,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Item con recursoCustom del MISMO paciente → crea correctamente")
     void crear_conRecursoCustomPropio_creaCorrectamente() {
-        prepararCreador();
+        prepararAcceso();
 
         UUID customId = UUID.randomUUID();
         PictogramaCustom custom = PictogramaCustom.builder().id(customId).paciente(paciente).etiqueta("Foto").build();
@@ -277,7 +331,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Crear item con esCore=true → el item se persiste como core")
     void crear_conEsCoreTrue_persisteComoCore() {
-        prepararCreador();
+        prepararAcceso();
 
         UUID globalId = UUID.randomUUID();
         PictogramaGlobal global = PictogramaGlobal.builder().id(globalId).etiqueta("Saludo").build();
@@ -305,7 +359,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Crear item sin esCore (null) → default false (comportamiento actual / backfill)")
     void crear_sinEsCore_defaultFalse() {
-        prepararCreador();
+        prepararAcceso();
 
         UUID globalId = UUID.randomUUID();
         PictogramaGlobal global = PictogramaGlobal.builder().id(globalId).etiqueta("Saludo").build();
@@ -334,7 +388,9 @@ class ItemCartillaServiceTest {
     @DisplayName("Actualizar con esCore=false explícito → desmarca el item (update parcial)")
     void actualizar_conEsCoreFalse_desmarcaCore() {
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId))
                 .willReturn(Optional.of(categoria));
@@ -359,7 +415,9 @@ class ItemCartillaServiceTest {
     @DisplayName("Actualizar sin campo esCore (null) → PRESERVA el valor existente")
     void actualizar_sinEsCore_preservaValor() {
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId))
                 .willReturn(Optional.of(categoria));
@@ -404,7 +462,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Crear con textoVisible explícito → se guarda recortado (trim)")
     void crear_conTextoVisible_seGuardaTrimmeado() {
-        prepararCreador();
+        prepararAcceso();
         PictogramaGlobal global = prepararGlobal("Baño");
         guardarDevolviendoArgumento();
 
@@ -417,7 +475,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Crear sin textoVisible → fallback a la etiqueta del pictograma global")
     void crear_sinTextoVisible_fallbackEtiquetaGlobal() {
-        prepararCreador();
+        prepararAcceso();
         PictogramaGlobal global = prepararGlobal("  Baño ");
         guardarDevolviendoArgumento();
 
@@ -429,7 +487,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Crear sin textoVisible → fallback a la etiqueta del pictograma custom, cortada a 30")
     void crear_sinTextoVisible_fallbackEtiquetaCustomCortadaA30() {
-        prepararCreador();
+        prepararAcceso();
         UUID customId = UUID.randomUUID();
         String etiquetaLarga = "A".repeat(40);
         PictogramaCustom custom = PictogramaCustom.builder()
@@ -445,7 +503,7 @@ class ItemCartillaServiceTest {
     @Test
     @DisplayName("Crear: visibleEnModoUso null → true; explícito false → false")
     void crear_visibleEnModoUso_defaultTrueYExplicitoFalse() {
-        prepararCreador();
+        prepararAcceso();
         PictogramaGlobal global = prepararGlobal("Baño");
         guardarDevolviendoArgumento();
 
@@ -454,7 +512,7 @@ class ItemCartillaServiceTest {
     }
 
     private ItemCartilla prepararActualizacion(String textoVisible, boolean visible) {
-        prepararCreador();
+        prepararAcceso();
         ItemCartilla item = ItemCartilla.builder().id(itemId).categoria(categoria)
                 .textoHablado("Hola").textoVisible(textoVisible).visibleEnModoUso(visible).build();
         given(itemCartillaRepository.findByIdAndCategoriaId(itemId, categoriaId)).willReturn(Optional.of(item));
@@ -504,9 +562,11 @@ class ItemCartillaServiceTest {
         assertThat(response.textoVisible()).isEqualTo("BAÑO");
     }
 
-    private void prepararCreador() {
+    private void prepararAcceso() {
         given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(terapeuta));
-        given(cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, terapeutaId))
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
+        given(cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId))
                 .willReturn(Optional.of(cartilla));
         given(categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId))
                 .willReturn(Optional.of(categoria));
