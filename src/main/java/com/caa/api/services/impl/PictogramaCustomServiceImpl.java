@@ -8,13 +8,12 @@ import com.caa.api.models.Paciente;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.ItemCartillaRepository;
-import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.AccesoService;
+import com.caa.api.services.AccesoService.AccesoPaciente;
 import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.CloudinaryService;
-import com.caa.api.services.PacienteService;
 import com.caa.api.services.PictogramaCustomService;
 import java.util.List;
 import java.util.UUID;
@@ -28,10 +27,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class PictogramaCustomServiceImpl implements PictogramaCustomService {
 
     private final PictogramaCustomRepository pictogramaCustomRepository;
-    private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
     private final ItemCartillaRepository itemCartillaRepository;
-    private final PacienteService pacienteService;
     private final CloudinaryService cloudinaryService;
     private final AccesoService accesoService;
 
@@ -41,7 +38,8 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
+        // Acceso deriva del paciente (LEER), nunca de la fachada RolUsuario (design-part2 §11.2)
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
 
         return pictogramaCustomRepository.findByPaciente_Id(pacienteId).stream()
                 .map(this::toResponseDTO)
@@ -54,7 +52,7 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
 
         PictogramaCustom pictograma = pictogramaCustomRepository.findById(id)
                 .filter(p -> p.getPaciente().getId().equals(pacienteId))
@@ -70,10 +68,9 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteService.verificarEdicionParaUsuario(pacienteId, usuario);
-
-        Paciente paciente = pacienteRepository.findById(pacienteId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de la fachada RolUsuario (design-part2 §11.2)
+        AccesoPaciente acceso = accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
+        Paciente paciente = acceso.paciente();
 
         String imagenUrl = cloudinaryService.subirImagen(archivo, pacienteId);
 
@@ -94,7 +91,8 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteService.verificarEdicionParaUsuario(pacienteId, usuario);
+        // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de la fachada RolUsuario (design-part2 §11.2)
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
 
         PictogramaCustom pictograma = pictogramaCustomRepository.findById(id)
                 .filter(p -> p.getPaciente().getId().equals(pacienteId))

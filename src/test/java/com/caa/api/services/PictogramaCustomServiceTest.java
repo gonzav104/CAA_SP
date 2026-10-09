@@ -21,7 +21,6 @@ import com.caa.api.models.RolGestion;
 import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.ItemCartillaRepository;
-import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.AccesoService;
@@ -41,19 +40,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
 /**
- * CRUD de PictogramaCustom con autorización por rol y subida real a Cloudinary:
- * GET multi-rol (terapeuta dueño | familiar asignado), POST/PUT con permiso de edición
- * (terapeuta o familiar EDICION_LIMITADA), DELETE solo terapeuta y con validación de "en uso".
+ * CRUD de PictogramaCustom con autorización vía {@code AccesoService}: GET (LEER), POST/PUT
+ * (EDITAR_CONTENIDO), DELETE (GESTION_CLINICA) — migrado desde la fachada
+ * {@code PacienteService.pacienteLegibleParaUsuario}/{@code verificarEdicionParaUsuario} per
+ * design-part2 §11.2 (tareas 3.5, Fase 3 continuación). {@code eliminarPictograma} ya migró en
+ * el commit {@code bf8267a}; list/get/create/update migran en esta sesión, siguiendo el mismo
+ * idiom de {@code CartillaServiceTest}/{@code CategoriaServiceTest}/{@code ItemCartillaServiceTest}.
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("PictogramaCustomService — CRUD y autorización por rol")
+@DisplayName("PictogramaCustomService — CRUD y autorización vía AccesoService")
 class PictogramaCustomServiceTest {
 
     @Mock PictogramaCustomRepository pictogramaCustomRepository;
-    @Mock PacienteRepository pacienteRepository;
     @Mock UsuarioRepository usuarioRepository;
     @Mock ItemCartillaRepository itemCartillaRepository;
-    @Mock PacienteService pacienteService;
     @Mock CloudinaryService cloudinaryService;
     @Mock AccesoService accesoService;
 
@@ -115,9 +115,11 @@ class PictogramaCustomServiceTest {
     }
 
     @Test
-    @DisplayName("GET lista → terapeuta dueño ve los pictogramas del paciente")
+    @DisplayName("GET lista → miembro de equipo ve los pictogramas del paciente")
     void obtenerLista_terapeuta_losVe() {
         given(usuarioRepository.findByEmail(terapeuta.getEmail())).willReturn(Optional.of(terapeuta));
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER))
+                .willReturn(accesoDeEquipo());
         given(pictogramaCustomRepository.findByPaciente_Id(pacienteId)).willReturn(List.of(pictograma));
 
         List<PictogramaCustomResponseDTO> resultado =
@@ -126,7 +128,7 @@ class PictogramaCustomServiceTest {
         assertThat(resultado).hasSize(1);
         assertThat(resultado.get(0).etiqueta()).isEqualTo("Mi foto");
         assertThat(resultado.get(0).imagenUrl()).isEqualTo(URL_IMAGEN);
-        verify(pacienteService).pacienteLegibleParaUsuario(pacienteId, terapeuta);
+        verify(accesoService).exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER);
     }
 
     @Test
@@ -140,8 +142,8 @@ class PictogramaCustomServiceTest {
                 .build();
 
         given(usuarioRepository.findByEmail(familiar.getEmail())).willReturn(Optional.of(familiar));
-        given(pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar))
-                .willThrow(new RecursoNoEncontradoException("No tiene acceso a este paciente"));
+        org.mockito.BDDMockito.willThrow(new RecursoNoEncontradoException("No tiene acceso a este paciente"))
+                .given(accesoService).exigirCapacidad(pacienteId, familiar, Capacidad.LEER);
 
         assertThatThrownBy(() -> pictogramaCustomService.obtenerPictogramasDePaciente(pacienteId, familiar.getEmail()))
                 .isInstanceOf(RecursoNoEncontradoException.class)
@@ -150,10 +152,11 @@ class PictogramaCustomServiceTest {
     }
 
     @Test
-    @DisplayName("POST → terapeuta dueño crea el pictograma con la URL devuelta por Cloudinary")
+    @DisplayName("POST → miembro de equipo crea el pictograma con la URL devuelta por Cloudinary")
     void crear_terapeuta_creaConUrlCloudinary() {
         given(usuarioRepository.findByEmail(terapeuta.getEmail())).willReturn(Optional.of(terapeuta));
-        given(pacienteRepository.findById(pacienteId)).willReturn(Optional.of(paciente));
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO))
+                .willReturn(accesoDeEquipo());
         given(cloudinaryService.subirImagen(imagen, pacienteId)).willReturn(URL_IMAGEN);
 
         PictogramaCustom guardado = PictogramaCustom.builder()
@@ -171,7 +174,7 @@ class PictogramaCustomServiceTest {
         assertThat(resultado.etiqueta()).isEqualTo("Mi foto");
         assertThat(resultado.imagenUrl()).isEqualTo(URL_IMAGEN);
         verify(cloudinaryService).subirImagen(imagen, pacienteId);
-        verify(pacienteService).verificarEdicionParaUsuario(pacienteId, terapeuta);
+        verify(accesoService).exigirCapacidad(pacienteId, terapeuta, Capacidad.EDITAR_CONTENIDO);
     }
 
     @Test
@@ -186,7 +189,7 @@ class PictogramaCustomServiceTest {
 
         given(usuarioRepository.findByEmail(familiar.getEmail())).willReturn(Optional.of(familiar));
         org.mockito.BDDMockito.willThrow(new RecursoNoEncontradoException("No tiene permisos de edición"))
-                .given(pacienteService).verificarEdicionParaUsuario(pacienteId, familiar);
+                .given(accesoService).exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO);
 
         assertThatThrownBy(() -> pictogramaCustomService.crearPictograma(
                 pacienteId, new PictogramaCustomRegistroDTO("Mi foto"), imagen, familiar.getEmail()))

@@ -192,18 +192,22 @@ public class PacienteServiceImpl implements PacienteService {
     }
 
     /**
-     * DEFERRADO A LA FASE 3 (desviación documentada, NO un olvido): design-part2 §11.1 dice
-     * literalmente que este método debe quedar como una fachada delgada sobre
-     * {@code accesoService.exigirCapacidad(LEER)}. Migrarlo AHORA, sin embargo, rompe en
-     * verde-de-suite-completa a todo llamador existente fuera del alcance de esta fase
-     * ({@code CartillaServiceImpl}, {@code AccesoFamiliarServiceTest}, etc. — explícitamente
-     * fuera de los "Allowed edit surfaces" de la Fase 2, reservados a la Fase 3 "Cartilla +
-     * nested-resource migration"), porque esos pacientes de fixture no tienen
-     * {@code organizacion}/{@code Membresia} seteada todavía. Mantener la implementación
-     * RolUsuario original aquí (sin cambios) preserva el contrato exacto hasta que la Fase 3
-     * migre ese mismo método JUNTO con sus llamadores Cartilla/Colaborador, tal como anticipa
-     * la tabla de Work Units de la Fase 3 (PR#4). Ningún test de ESTA fase depende de que este
-     * método use {@code AccesoService}.
+     * BLOQUEADO de nuevo, NO un olvido (apply session 2026-10-09, continuación de Fase 3):
+     * {@code CartillaServiceImpl} y los demás llamadores de Fase 3 ya migraron (tareas 3.1-3.5,
+     * ver {@code apply-progress}); {@code PictogramaCustomServiceImpl} también migró a llamar
+     * {@code AccesoService.exigirCapacidad(...)} DIRECTAMENTE (sin pasar por esta fachada), así
+     * que ESTE método ya no tiene ningún llamador en {@code src/main}. Migrarlo de todas formas
+     * (como pide design-part2 §11.1) rompe
+     * {@code AccesoFamiliarServiceTest.PacienteHelperTest}: esa clase anidada usa
+     * {@code @InjectMocks PacienteServiceImpl} con mocks directos de {@code PacienteRepository}/
+     * {@code PacienteFamiliarRepository} (sin mock de {@code AccesoService}), así que delegar a
+     * {@code accesoService.exigirCapacidad(...)} causaría un {@code NullPointerException} en sus
+     * 5 tests. {@code AccesoFamiliarServiceTest.java} NO está en el "Allowed edit surfaces" de
+     * esta sesión (solo {@code PictogramaCustomIntegrationTest.java} fue añadido). Reportado como
+     * blocker nuevo en vez de ampliar el alcance en silencio; ver {@code apply-progress} para el
+     * detalle completo. Próxima acción: añadir {@code AccesoFamiliarServiceTest.java} al edit
+     * surface de una futura sesión para terminar esta migración (o decidir eliminar este método
+     * de la interfaz, ya que ya no tiene llamadores de producción).
      */
     @Override
     public Paciente pacienteLegibleParaUsuario(UUID pacienteId, Usuario usuario) {
@@ -218,7 +222,7 @@ public class PacienteServiceImpl implements PacienteService {
         throw new RecursoNoEncontradoException("Rol desconocido");
     }
 
-    /** DEFERRADO A LA FASE 3: ver el javadoc de {@link #pacienteLegibleParaUsuario}. */
+    /** BLOQUEADO de nuevo: ver el javadoc de {@link #pacienteLegibleParaUsuario}. */
     @Override
     public void verificarEdicionParaUsuario(UUID pacienteId, Usuario usuario) {
         if (usuario.getRol() == RolUsuario.TERAPEUTA) {
