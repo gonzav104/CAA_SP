@@ -226,14 +226,55 @@ public class PacienteServiceImpl implements PacienteService {
         pacienteRepository.delete(acceso.paciente());
     }
 
+    /**
+     * DEFERRADO A LA FASE 3 (desviación documentada, NO un olvido): design-part2 §11.1 dice
+     * literalmente que este método debe quedar como una fachada delgada sobre
+     * {@code accesoService.exigirCapacidad(LEER)}. Migrarlo AHORA, sin embargo, rompe en
+     * verde-de-suite-completa a todo llamador existente fuera del alcance de esta fase
+     * ({@code CartillaServiceImpl}, {@code AccesoFamiliarServiceTest}, etc. — explícitamente
+     * fuera de los "Allowed edit surfaces" de la Fase 2, reservados a la Fase 3 "Cartilla +
+     * nested-resource migration"), porque esos pacientes de fixture no tienen
+     * {@code organizacion}/{@code Membresia} seteada todavía. Mantener la implementación
+     * RolUsuario original aquí (sin cambios) preserva el contrato exacto hasta que la Fase 3
+     * migre ese mismo método JUNTO con sus llamadores Cartilla/Colaborador, tal como anticipa
+     * la tabla de Work Units de la Fase 3 (PR#4). Ningún test de ESTA fase depende de que este
+     * método use {@code AccesoService}.
+     */
     @Override
     public Paciente pacienteLegibleParaUsuario(UUID pacienteId, Usuario usuario) {
-        return accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER).paciente();
+        if (usuario.getRol() == RolUsuario.TERAPEUTA) {
+            return pacienteDelTerapeuta(pacienteId, usuario.getId());
+        } else if (usuario.getRol() == RolUsuario.FAMILIAR) {
+            return pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, usuario.getId())
+                    .map(PacienteFamiliar::getPaciente)
+                    .orElseThrow(() -> new RecursoNoEncontradoException(
+                            "Paciente no encontrado o no tiene permisos"));
+        }
+        throw new RecursoNoEncontradoException("Rol desconocido");
     }
 
+    /** DEFERRADO A LA FASE 3: ver el javadoc de {@link #pacienteLegibleParaUsuario}. */
     @Override
     public void verificarEdicionParaUsuario(UUID pacienteId, Usuario usuario) {
-        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
+        if (usuario.getRol() == RolUsuario.TERAPEUTA) {
+            pacienteDelTerapeuta(pacienteId, usuario.getId());
+        } else if (usuario.getRol() == RolUsuario.FAMILIAR) {
+            PermisoColaborador permiso = pacienteFamiliarRepository
+                    .findByPaciente_IdAndUsuario_Id(pacienteId, usuario.getId())
+                    .map(PacienteFamiliar::getPermiso)
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+            if (permiso != PermisoColaborador.EDICION_LIMITADA) {
+                throw new RecursoNoEncontradoException(
+                        "Paciente no encontrado o no tiene permisos");
+            }
+        } else {
+            throw new RecursoNoEncontradoException("Rol desconocido");
+        }
+    }
+
+    private Paciente pacienteDelTerapeuta(UUID pacienteId, UUID terapeutaId) {
+        return pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
     }
 
     private PacienteResponseDTO toResponseDTO(Paciente p, PermisoColaborador miPermiso) {
