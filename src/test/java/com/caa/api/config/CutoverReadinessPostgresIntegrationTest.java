@@ -7,9 +7,6 @@ import com.caa.api.dtos.OrganizacionResponseDTO;
 import com.caa.api.dtos.PacienteRegistroDTO;
 import com.caa.api.services.OrganizacionService;
 import com.caa.api.services.PacienteService;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -70,10 +67,10 @@ class CutoverReadinessPostgresIntegrationTest {
         registry.add("resend.api-key", () -> "test-resend-api-key");
     }
 
-    /** Aplica el {@code init.sql} completo (esquema real, incl. MIGRACIÓN 011-015a) una sola vez. */
+    /** Aplica solo el bootstrap y las migraciones hasta 015a una sola vez; excluye 016. */
     @BeforeAll
     static void aplicarEsquema() throws Exception {
-        String sql = Files.readString(Path.of("init.sql"), StandardCharsets.UTF_8);
+        String sql = PostgresTestcontainerBase.leerInitSqlHasta("-- MIGRACIÓN 016");
         try (Connection conexion = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              Statement statement = conexion.createStatement()) {
