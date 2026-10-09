@@ -1,6 +1,5 @@
 package com.caa.api.dtos;
 
-import com.caa.api.models.RolUsuario;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -36,8 +35,7 @@ class UsuarioRegistroDTOTest {
         UsuarioRegistroDTO dto = new UsuarioRegistroDTO(
                 "test@ejemplo.com",
                 password,
-                "Test User",
-                RolUsuario.TERAPEUTA);
+                "Test User");
         return validator.validate(dto);
     }
 

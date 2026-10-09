@@ -26,11 +26,13 @@ public class UsuarioServiceImpl implements UsuarioService {
             throw new ConflictoException("El email ya está registrado");
         }
 
+        // Identidad únicamente: no se asigna ningún RolUsuario al registrar (design-part2 §15
+        // stage 6, cutover; spec user-registration MODIFIED). El campo queda null/legacy; el
+        // workspace se crea o se une después, nunca en este paso.
         Usuario usuario = Usuario.builder()
                 .email(dto.email())
                 .passwordHash(passwordEncoder.encode(dto.password()))
                 .nombre(dto.nombre())
-                .rol(dto.rol())
                 .build();
 
         Usuario usuarioGuardado = usuarioRepository.save(usuario);

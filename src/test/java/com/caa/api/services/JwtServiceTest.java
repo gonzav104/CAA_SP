@@ -122,8 +122,8 @@ class JwtServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("generarToken → token tiene subject = email, claim 'rol' y claim tokenVersion")
-    void generarToken_contieneEmailYRol() {
+    @DisplayName("generarToken → token tiene subject = email y claim tokenVersion, SIN claim 'rol'")
+    void generarToken_contieneEmailYTokenVersionSinRol() {
         String token = jwtService.generarToken(usuario);
 
         assertThat(token).isNotBlank();
@@ -135,9 +135,24 @@ class JwtServiceTest {
                 .getPayload();
 
         assertThat(claims.getSubject()).isEqualTo("test@ejemplo.com");
-        assertThat(claims.get("rol", String.class)).isEqualTo("FAMILIAR");
+        // La autorización ya no se resuelve desde RolUsuario (design-part2 §15 stage 6): el claim
+        // "rol" fue eliminado del token.
+        assertThat(claims.containsKey("rol")).isFalse();
         // El builder de Usuario arranca en 0 (@Builder.Default)
         assertThat(claims.get("tokenVersion", Number.class).intValue()).isZero();
+    }
+
+    @Test
+    @DisplayName("generarToken con rol=null (usuario registrado tras el cambio de contrato) → NO lanza NPE")
+    void generarToken_rolNull_noLanzaExcepcion() {
+        // Un usuario registrado por la nueva UsuarioRegistroDTO (sin campo rol) nace con
+        // rol=null; generarToken ya no lee ese campo y no debe explotar (regresión del cambio
+        // de contrato de registro, spec user-registration MODIFIED).
+        usuario.setRol(null);
+
+        String token = jwtService.generarToken(usuario);
+
+        assertThat(token).isNotBlank();
     }
 
     @Test

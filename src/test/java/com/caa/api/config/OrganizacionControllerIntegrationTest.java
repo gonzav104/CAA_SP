@@ -88,8 +88,9 @@ class OrganizacionControllerIntegrationTest {
 
         organizacionId = UUID.randomUUID();
 
-        // RolUsuario legacy: JwtService.generarToken todavía lo lee (design §6, cutover pendiente,
-        // fuera de alcance de esta tarea); no tiene efecto sobre la autorización multi-tenant nueva.
+        // RolUsuario legacy: se conserva en el fixture por compatibilidad con otros tests de este
+        // archivo, pero ni JwtService.generarToken ni JwtAuthenticationFilter lo leen más (design
+        // §15 stage 6, cutover de registro); no tiene efecto sobre la autorización multi-tenant.
         owner = Usuario.builder().id(UUID.randomUUID()).email("owner@test.com").nombre("Owner")
                 .rol(RolUsuario.TERAPEUTA).build();
         miembro = Usuario.builder().id(UUID.randomUUID()).email("miembro@test.com").nombre("Miembro")

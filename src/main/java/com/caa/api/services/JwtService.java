@@ -31,8 +31,14 @@ public class JwtService {
     /**
      * Genera un JWT firmado con HMAC (algoritmo elegido automáticamente según el largo del key:
      * HS256 si 256-383 bits, HS384 si 384-511 bits, HS512 si 512+ bits).
-     * Subject = email, claim "rol" = RolUsuario, claim "tokenVersion" = versión actual del token
-     * del usuario (fallback 0 si es null — datos viejos), issued = ahora, expiracion configurable.
+     * Subject = email, claim "tokenVersion" = versión actual del token del usuario (fallback 0 si
+     * es null — datos viejos), issued = ahora, expiracion configurable.
+     * <p>
+     * NO incluye un claim "rol": la autorización ya no se resuelve desde {@code RolUsuario}
+     * (design-part2 §15 stage 6, cutover; AccesoService/Membresia son la fuente de verdad). Dejar
+     * de leer {@code usuario.getRol()} aquí es, además, obligatorio: tras el cambio de contrato de
+     * registro (spec user-registration MODIFIED) un usuario recién registrado nace con
+     * {@code rol = null}, y {@code .name()} sobre ese null rompería el login con un NPE.
      */
     public String generarToken(Usuario usuario) {
         Date ahora = new Date();
@@ -40,7 +46,6 @@ public class JwtService {
 
         return Jwts.builder()
                 .subject(usuario.getEmail())
-                .claim("rol", usuario.getRol().name())
                 .claim("tokenVersion", tokenVersionDe(usuario))
                 .issuedAt(ahora)
                 .expiration(expiracion)

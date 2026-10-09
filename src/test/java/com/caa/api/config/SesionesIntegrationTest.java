@@ -114,9 +114,10 @@ class SesionesIntegrationTest {
 
         pacienteId = UUID.randomUUID();
         organizacionId = UUID.randomUUID();
-        // RolUsuario se conserva en el fixture SOLO porque JwtService.generarToken todavía lo lee
-        // para el claim "rol" (legacy, pendiente de retiro en una fase posterior); ningún flujo
-        // de autorización de este archivo lo consulta.
+        // RolUsuario legacy: se conserva en el fixture por compatibilidad con otros usos del
+        // campo, pero ya no es leído por JwtService.generarToken ni por JwtAuthenticationFilter
+        // (design §15 stage 6, cutover de registro); ningún flujo de autorización de este
+        // archivo lo consulta.
         terapeuta = Usuario.builder()
                 .id(UUID.randomUUID())
                 .email("terapeuta@test.com")

@@ -101,11 +101,12 @@ public class AuthService {
                             Optional.of(token));
                 })
                 .orElseGet(() -> {
+                    // Identidad únicamente: no se asigna ningún RolUsuario (design-part2 §15
+                    // stage 6, cutover; spec user-registration MODIFIED).
                     Usuario nuevo = Usuario.builder()
                             .email(googleUsuario.email())
                             .nombre(googleUsuario.nombre())
                             .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
-                            .rol(dto.rol())
                             .build();
                     Usuario guardado = usuarioRepository.save(nuevo);
 

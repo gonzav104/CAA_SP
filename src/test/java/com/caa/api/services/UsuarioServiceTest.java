@@ -3,7 +3,6 @@ package com.caa.api.services;
 import com.caa.api.dtos.UsuarioRegistroDTO;
 import com.caa.api.dtos.UsuarioResponseDTO;
 import com.caa.api.exceptions.ConflictoException;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.impl.UsuarioServiceImpl;
@@ -47,7 +46,7 @@ class UsuarioServiceTest {
 
     @BeforeEach
     void setUp() {
-        dto = new UsuarioRegistroDTO("nuevo@ejemplo.com", "segura123", "Nuevo User", RolUsuario.TERAPEUTA);
+        dto = new UsuarioRegistroDTO("nuevo@ejemplo.com", "segura123", "Nuevo User");
     }
 
     @Test
@@ -65,18 +64,19 @@ class UsuarioServiceTest {
     }
 
     @Test
-    @DisplayName("Registrar correcto → devuelve UsuarioResponseDTO")
+    @DisplayName("Registrar correcto → devuelve UsuarioResponseDTO con rol=null (identidad únicamente)")
     void registrar_correcto_devuelveResponse() {
         given(usuarioRepository.findByEmail("nuevo@ejemplo.com"))
                 .willReturn(Optional.empty());
         given(passwordEncoder.encode("segura123")).willReturn("$2a$10$hashFalso");
 
+        // Ningún rol es asignado al registrar (spec user-registration MODIFIED): el fixture
+        // refleja el usuario tal como lo deja UsuarioServiceImpl.registrarUsuario, sin .rol(...).
         Usuario guardado = Usuario.builder()
                 .id(UUID.randomUUID())
                 .email("nuevo@ejemplo.com")
                 .passwordHash("$2a$10$hashFalso")
                 .nombre("Nuevo User")
-                .rol(RolUsuario.TERAPEUTA)
                 .creadoEn(LocalDateTime.now())
                 .build();
         given(usuarioRepository.save(any(Usuario.class))).willReturn(guardado);
@@ -85,7 +85,7 @@ class UsuarioServiceTest {
 
         assertThat(response).isNotNull();
         assertThat(response.email()).isEqualTo("nuevo@ejemplo.com");
-        assertThat(response.rol()).isEqualTo(RolUsuario.TERAPEUTA);
+        assertThat(response.rol()).isNull();
         verify(emailService).enviarBienvenida(guardado);
     }
 }

@@ -24,6 +24,17 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    /**
+     * Autoridad constante para todo usuario autenticado. El proyecto no usa {@code hasRole}/
+     * {@code hasAuthority}/{@code @PreAuthorize} en ningún punto (confirmado por búsqueda en todo
+     * {@code src/main}, design-part2 §15 stage 6 task 10.4) — toda autorización real pasa por
+     * {@code AccesoService}/{@code Membresia}. Derivar la autoridad de {@code RolUsuario} ya no es
+     * posible de todos modos: un usuario registrado después del cambio de contrato de registro
+     * (spec user-registration MODIFIED) nace con {@code rol = null}, y leerlo acá rompería la
+     * autenticación de ESE usuario con un NPE en cada request.
+     */
+    private static final String AUTORIDAD_USUARIO_AUTENTICADO = "ROLE_USUARIO";
+
     private final JwtService jwtService;
     private final UsuarioRepository usuarioRepository;
 
@@ -44,7 +55,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     if (usuario != null && versionCoincide(claims, usuario)) {
                         SimpleGrantedAuthority authority = new SimpleGrantedAuthority(
-                                "ROLE_" + usuario.getRol().name());
+                                AUTORIDAD_USUARIO_AUTENTICADO);
 
                         UsernamePasswordAuthenticationToken authToken =
                                 new UsernamePasswordAuthenticationToken(

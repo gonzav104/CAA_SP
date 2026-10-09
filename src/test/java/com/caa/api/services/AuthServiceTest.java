@@ -190,9 +190,9 @@ class AuthServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("completarRegistroGoogle con rol FAMILIAR → crea usuario con rol FAMILIAR (nunca TERAPEUTA)")
-    void completarRegistroGoogle_conRolFAMILIAR_creaUsuarioConEseRol() {
-        GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("id-token-nuevo", RolUsuario.FAMILIAR);
+    @DisplayName("completarRegistroGoogle → crea usuario de identidad únicamente, SIN ningún RolUsuario")
+    void completarRegistroGoogle_creaUsuarioSinRol() {
+        GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("id-token-nuevo");
         given(googleTokenVerifier.verificar("id-token-nuevo"))
                 .willReturn(Optional.of(new GoogleUsuario("nuevo@ejemplo.com", "Nuevo Usuario")));
         given(usuarioRepository.findByEmail("nuevo@ejemplo.com"))
@@ -204,11 +204,11 @@ class AuthServiceTest {
 
         GoogleLoginResult result = authService.completarRegistroGoogle(dto);
 
-        // Verificar que se creó el usuario con el rol FAMILIAR
+        // Identidad únicamente: ningún RolUsuario es asignado (spec user-registration MODIFIED)
         ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
         verify(usuarioRepository).save(captor.capture());
         Usuario creado = captor.getValue();
-        assertThat(creado.getRol()).isEqualTo(RolUsuario.FAMILIAR);
+        assertThat(creado.getRol()).isNull();
         assertThat(creado.getEmail()).isEqualTo("nuevo@ejemplo.com");
         // Un usuario recién creado arranca con tokenVersion=0 (@Builder.Default)
         assertThat(creado.getTokenVersion()).isZero();
@@ -221,31 +221,9 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("completarRegistroGoogle con rol TERAPEUTA → crea usuario con rol TERAPEUTA")
-    void completarRegistroGoogle_conRolTERAPEUTA_creaUsuarioConEseRol() {
-        GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("id-token-terapeuta", RolUsuario.TERAPEUTA);
-        given(googleTokenVerifier.verificar("id-token-terapeuta"))
-                .willReturn(Optional.of(new GoogleUsuario("terapeuta@ejemplo.com", "Dr. Smith")));
-        given(usuarioRepository.findByEmail("terapeuta@ejemplo.com"))
-                .willReturn(Optional.empty());
-        given(usuarioRepository.save(any(Usuario.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-        given(jwtService.generarToken(any(Usuario.class)))
-                .willReturn("jwt-token-terapeuta");
-
-        GoogleLoginResult result = authService.completarRegistroGoogle(dto);
-
-        ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
-        verify(usuarioRepository).save(captor.capture());
-        assertThat(captor.getValue().getRol()).isEqualTo(RolUsuario.TERAPEUTA);
-        assertThat(result.dto().requiereRol()).isFalse();
-        assertThat(result.token()).isPresent();
-    }
-
-    @Test
     @DisplayName("completarRegistroGoogle — caso de carrera: usuario ya existe → loguea sin duplicar")
     void completarRegistroGoogle_casoCarrera_logueaSinDuplicar() {
-        GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("id-token-doble", RolUsuario.FAMILIAR);
+        GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("id-token-doble");
         given(googleTokenVerifier.verificar("id-token-doble"))
                 .willReturn(Optional.of(new GoogleUsuario("carrera@ejemplo.com", "Carrera")));
         // El usuario ya fue creado por otro thread/pestaña
@@ -267,7 +245,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("completarRegistroGoogle con TOKEN INVÁLIDO → lanza CredencialesInvalidasException")
     void completarRegistroGoogle_tokenInvalido_lanzaExcepcion() {
-        GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("token-malo", RolUsuario.TERAPEUTA);
+        GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("token-malo");
         given(googleTokenVerifier.verificar("token-malo"))
                 .willReturn(Optional.empty());
 

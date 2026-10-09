@@ -168,6 +168,33 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    @DisplayName("Endpoint protegido con token de usuario con rol=null (registrado tras el cambio de "
+            + "contrato de registro) → NO devuelve 401 ni 500 (regresión NPE en JwtAuthenticationFilter)")
+    void endpointProtegido_usuarioConRolNull_noDevuelve401Ni500() throws Exception {
+        // Un usuario registrado por la UsuarioRegistroDTO actual (sin campo rol) nace con
+        // rol=null; ni JwtService.generarToken ni JwtAuthenticationFilter leen ese campo, así que
+        // ni la emisión del token ni la autenticación por request deben explotar.
+        Usuario usuarioSinRol = Usuario.builder()
+                .id(UUID.randomUUID())
+                .email("sin-rol@ejemplo.com")
+                .passwordHash(passwordEncoder.encode("segura123"))
+                .nombre("Sin Rol")
+                .creadoEn(LocalDateTime.of(2026, 10, 1, 10, 0))
+                .build();
+        String tokenValido = jwtService.generarToken(usuarioSinRol);
+        given(usuarioRepository.findByEmail("sin-rol@ejemplo.com"))
+                .willReturn(Optional.of(usuarioSinRol));
+
+        mockMvc.perform(get("/api/pacientes")
+                        .header("Authorization", "Bearer " + tokenValido)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(result -> assertNotEquals(401, result.getResponse().getStatus(),
+                        "Usuario con rol=null no debería ser rechazado por el filtro"))
+                .andExpect(result -> assertNotEquals(500, result.getResponse().getStatus(),
+                        "Usuario con rol=null no debería producir un error interno (NPE)"));
+    }
+
+    @Test
     @DisplayName("Endpoint público /auth/login → NO requiere token (400 por body vacío, no 401)")
     void endpointPublico_authLogin_noRequiereToken() throws Exception {
         mockMvc.perform(post("/auth/login")
