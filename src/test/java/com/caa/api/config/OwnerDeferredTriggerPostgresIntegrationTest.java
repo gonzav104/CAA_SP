@@ -30,11 +30,11 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     void demoverSinPromoverFallaEnElCommitNoEnElUpdate() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
             aplicarInitSqlHasta(conexion, null);
+            conexion.setAutoCommit(false);
             UUID usuarioOwner = crearUsuario(conexion, "owner@test.com");
             UUID organizacion = crearOrganizacion(conexion, usuarioOwner);
             insertarMembresia(conexion, organizacion, usuarioOwner, "OWNER", true);
 
-            conexion.setAutoCommit(false);
             try (Statement statement = conexion.createStatement()) {
                 // El UPDATE en sí mismo NO debe lanzar: el trigger es DEFERRABLE INITIALLY DEFERRED.
                 statement.execute("UPDATE membresias SET rol_gestion = 'ADMIN' WHERE organizacion_id = '"
@@ -52,13 +52,13 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     void demoverYPromoverEnLaMismaTransaccionTieneExito() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
             aplicarInitSqlHasta(conexion, null);
+            conexion.setAutoCommit(false);
             UUID owner = crearUsuario(conexion, "owner2@test.com");
             UUID nuevoOwner = crearUsuario(conexion, "nuevo-owner@test.com");
             UUID organizacion = crearOrganizacion(conexion, owner);
             insertarMembresia(conexion, organizacion, owner, "OWNER", true);
             insertarMembresia(conexion, organizacion, nuevoOwner, "ADMIN", false);
 
-            conexion.setAutoCommit(false);
             try (Statement statement = conexion.createStatement()) {
                 statement.execute("UPDATE membresias SET rol_gestion = 'ADMIN' WHERE organizacion_id = '"
                         + organizacion + "' AND usuario_id = '" + owner + "'");
@@ -85,11 +85,11 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     void actualizarSoloEsTerapeutaCommiteaSinError() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
             aplicarInitSqlHasta(conexion, null);
+            conexion.setAutoCommit(false);
             UUID owner = crearUsuario(conexion, "owner3@test.com");
             UUID organizacion = crearOrganizacion(conexion, owner);
             insertarMembresia(conexion, organizacion, owner, "OWNER", true);
 
-            conexion.setAutoCommit(false);
             try (Statement statement = conexion.createStatement()) {
                 statement.execute("UPDATE membresias SET es_terapeuta = FALSE WHERE organizacion_id = '"
                         + organizacion + "' AND usuario_id = '" + owner + "'");
@@ -134,13 +134,13 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     void eliminarMembresiaNoOwnerCommiteaSinError() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
             aplicarInitSqlHasta(conexion, null);
+            conexion.setAutoCommit(false);
             UUID owner = crearUsuario(conexion, "owner4a@test.com");
             UUID admin = crearUsuario(conexion, "admin4a@test.com");
             UUID organizacion = crearOrganizacion(conexion, owner);
             insertarMembresia(conexion, organizacion, owner, "OWNER", true);
             insertarMembresia(conexion, organizacion, admin, "ADMIN", false);
 
-            conexion.setAutoCommit(false);
             try (Statement statement = conexion.createStatement()) {
                 statement.execute("DELETE FROM membresias WHERE organizacion_id = '" + organizacion
                         + "' AND usuario_id = '" + admin + "'");
@@ -165,11 +165,11 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     void eliminarOrganizacionConCascadaAMembresiaOwnerCommiteaSinError() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
             aplicarInitSqlHasta(conexion, null);
+            conexion.setAutoCommit(false);
             UUID owner = crearUsuario(conexion, "owner4b@test.com");
             UUID organizacion = crearOrganizacion(conexion, owner);
             insertarMembresia(conexion, organizacion, owner, "OWNER", true);
 
-            conexion.setAutoCommit(false);
             try (Statement statement = conexion.createStatement()) {
                 // ON DELETE CASCADE (fk_membresia_organizacion) borra la membresía OWNER en la misma
                 // sentencia; antes del fix, fn_verificar_un_owner() abortaba con "record \"new\" is
