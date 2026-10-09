@@ -37,7 +37,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 public abstract class PostgresTestcontainerBase {
 
     @Container
-    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16");
+    final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine");
 
     protected Connection abrirConexion() throws SQLException {
         Connection conexion = DriverManager.getConnection(
