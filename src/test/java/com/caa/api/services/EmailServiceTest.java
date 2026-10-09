@@ -1,7 +1,9 @@
 package com.caa.api.services;
 
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PermisoColaborador;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.services.impl.EmailServiceImpl;
@@ -42,6 +44,7 @@ class EmailServiceTest {
 
     private Usuario usuario;
     private Paciente paciente;
+    private Organizacion organizacion;
 
     @BeforeEach
     void setUp() {
@@ -56,6 +59,10 @@ class EmailServiceTest {
                 .nombre("Nico")
                 .apellido("Perez")
                 .fechaNacimiento(LocalDate.of(2015, 5, 10))
+                .build();
+        organizacion = Organizacion.builder()
+                .id(UUID.randomUUID())
+                .nombre("Consultorio de Prueba")
                 .build();
 
         // Los @Value no se inyectan con Mockito: se setean explícitamente.
@@ -90,13 +97,24 @@ class EmailServiceTest {
     }
 
     @Test
-    @DisplayName("enviarInvitacionColaborador con envío fallido → no lanza excepción")
-    void enviarInvitacionColaborador_envioFallido_noPropaga() throws ResendException {
+    @DisplayName("enviarInvitacionOrganizacion con envío fallido → no lanza excepción")
+    void enviarInvitacionOrganizacion_envioFallido_noPropaga() throws ResendException {
         given(emails.send(any(CreateEmailOptions.class)))
                 .willThrow(new ResendException("API de Resend caída"));
 
-        assertThatCode(() -> emailService.enviarInvitacionColaborador(
-                usuario, paciente, PermisoColaborador.LECTURA))
+        assertThatCode(() -> emailService.enviarInvitacionOrganizacion(
+                "nuevo@ejemplo.com", organizacion, RolGestion.MIEMBRO, true, "token-abc"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("enviarInvitacionFamiliar con envío fallido → no lanza excepción")
+    void enviarInvitacionFamiliar_envioFallido_noPropaga() throws ResendException {
+        given(emails.send(any(CreateEmailOptions.class)))
+                .willThrow(new ResendException("API de Resend caída"));
+
+        assertThatCode(() -> emailService.enviarInvitacionFamiliar(
+                "nuevo@ejemplo.com", paciente, PermisoColaborador.LECTURA, "token-abc"))
                 .doesNotThrowAnyException();
     }
 
@@ -144,17 +162,64 @@ class EmailServiceTest {
     }
 
     @Test
-    @DisplayName("enviarInvitacionColaborador → menciona al paciente y el permiso")
-    void enviarInvitacionColaborador_mencionaPacienteYPermiso() throws ResendException {
-        emailService.enviarInvitacionColaborador(usuario, paciente, PermisoColaborador.EDICION_LIMITADA);
+    @DisplayName("enviarInvitacionOrganizacion → describe rolGestion y esTerapeuta como atributos separados")
+    void enviarInvitacionOrganizacion_describeAtributosPorSeparado() throws ResendException {
+        emailService.enviarInvitacionOrganizacion(
+                "nuevo@ejemplo.com", organizacion, RolGestion.ADMIN, true, "token-xyz");
 
         ArgumentCaptor<CreateEmailOptions> captor = ArgumentCaptor.forClass(CreateEmailOptions.class);
         verify(emails).send(captor.capture());
 
         CreateEmailOptions email = captor.getValue();
-        assertThat(email.getTo()).containsExactly("mama@ejemplo.com");
+        assertThat(email.getTo()).containsExactly("nuevo@ejemplo.com");
+        assertThat(email.getHtml())
+                .contains("Administrador")
+                .contains("capacidad clínica")
+                .contains("Consultorio de Prueba")
+                .contains("http://localhost:5173/invitaciones/aceptar?token=token-xyz")
+                .doesNotContain("rol: TERAPEUTA");
+    }
+
+    @Test
+    @DisplayName("enviarInvitacionOrganizacion con esTerapeuta=false → no menciona capacidad clínica")
+    void enviarInvitacionOrganizacion_sinCapacidadClinica_noLaMenciona() throws ResendException {
+        emailService.enviarInvitacionOrganizacion(
+                "nuevo@ejemplo.com", organizacion, RolGestion.MIEMBRO, false, "token-xyz");
+
+        ArgumentCaptor<CreateEmailOptions> captor = ArgumentCaptor.forClass(CreateEmailOptions.class);
+        verify(emails).send(captor.capture());
+
+        assertThat(captor.getValue().getHtml()).doesNotContain("capacidad clínica");
+    }
+
+    @Test
+    @DisplayName("enviarInvitacionOrganizacion → escapa HTML del nombre de la organización")
+    void enviarInvitacionOrganizacion_escapaNombreOrganizacion() throws ResendException {
+        organizacion.setNombre("<script>alert(1)</script>");
+
+        emailService.enviarInvitacionOrganizacion(
+                "nuevo@ejemplo.com", organizacion, RolGestion.MIEMBRO, true, "token-xyz");
+
+        ArgumentCaptor<CreateEmailOptions> captor = ArgumentCaptor.forClass(CreateEmailOptions.class);
+        verify(emails).send(captor.capture());
+
+        assertThat(captor.getValue().getHtml()).doesNotContain("<script>");
+    }
+
+    @Test
+    @DisplayName("enviarInvitacionFamiliar → menciona al paciente y el permiso, al email crudo (sin Usuario)")
+    void enviarInvitacionFamiliar_mencionaPacienteYPermiso() throws ResendException {
+        emailService.enviarInvitacionFamiliar(
+                "nuevo@ejemplo.com", paciente, PermisoColaborador.EDICION_LIMITADA, "token-fam");
+
+        ArgumentCaptor<CreateEmailOptions> captor = ArgumentCaptor.forClass(CreateEmailOptions.class);
+        verify(emails).send(captor.capture());
+
+        CreateEmailOptions email = captor.getValue();
+        assertThat(email.getTo()).containsExactly("nuevo@ejemplo.com");
         assertThat(email.getHtml())
                 .contains("Nico Perez")
-                .contains("edición limitada");
+                .contains("edición limitada")
+                .contains("http://localhost:5173/invitaciones/aceptar?token=token-fam");
     }
 }
