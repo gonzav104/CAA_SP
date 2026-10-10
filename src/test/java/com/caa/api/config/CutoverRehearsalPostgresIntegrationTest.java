@@ -3,6 +3,7 @@ package com.caa.api.config;
 import static com.caa.api.config.CutoverRehearsalSupport.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import com.caa.api.CaaSpApplication;
 import com.caa.api.dtos.OrganizacionRegistroDTO;
@@ -25,6 +26,77 @@ class CutoverRehearsalPostgresIntegrationTest extends PostgresTestcontainerBase 
         assertThat(migration016()).contains("BEGIN;", "COMMIT;",
                 "ALTER COLUMN organizacion_id SET NOT NULL",
                 "ALTER COLUMN terapeuta_id DROP NOT NULL", "ALTER COLUMN rol DROP NOT NULL");
+    }
+
+    @Test
+    void failedGuardRollsBackTheEntireMigrationIncludingBackfills() throws Exception {
+        try (Connection connection = abrirConexion()) {
+            aplicarInitSqlHasta(connection, "-- MIGRACIÓN 016");
+            ejecutarScript(connection, """
+                    INSERT INTO usuarios (id,email,password_hash,nombre,rol) VALUES
+                    ('30000000-0000-0000-0000-000000000001','resolvable@atomicity.test','hash','Resolvable','TERAPEUTA'),
+                    ('30000000-0000-0000-0000-000000000002','blocked@atomicity.test','hash','Blocked','TERAPEUTA');
+
+                    ALTER TABLE organizaciones DISABLE TRIGGER trg_organizaciones_un_owner;
+                    ALTER TABLE membresias DISABLE TRIGGER trg_membresias_un_owner;
+                    INSERT INTO organizaciones (id,nombre,creado_por_id) VALUES
+                    ('31000000-0000-0000-0000-000000000002','Inconsistent workspace',
+                     '30000000-0000-0000-0000-000000000002');
+                    INSERT INTO membresias (organizacion_id,usuario_id,rol_gestion,es_terapeuta) VALUES
+                    ('31000000-0000-0000-0000-000000000002',
+                     '30000000-0000-0000-0000-000000000002','MIEMBRO',true);
+                    ALTER TABLE organizaciones ENABLE TRIGGER trg_organizaciones_un_owner;
+                    ALTER TABLE membresias ENABLE TRIGGER trg_membresias_un_owner;
+
+                    INSERT INTO pacientes (id,terapeuta_id,nombre,apellido,fecha_nacimiento,organizacion_id) VALUES
+                    ('32000000-0000-0000-0000-000000000001',
+                     '30000000-0000-0000-0000-000000000001','Resolvable','Patient','2015-01-01',NULL),
+                    ('32000000-0000-0000-0000-000000000002',
+                     '30000000-0000-0000-0000-000000000002','Blocked','Patient','2015-01-01',NULL);
+
+                    CREATE SEQUENCE rehearsal_backfill_probe_seq;
+                    SELECT nextval('rehearsal_backfill_probe_seq');
+                    CREATE FUNCTION fn_probe_organization_insert() RETURNS TRIGGER AS $$
+                    BEGIN
+                        PERFORM nextval('rehearsal_backfill_probe_seq');
+                        RETURN NEW;
+                    END;
+                    $$ LANGUAGE plpgsql;
+                    CREATE TRIGGER trg_probe_organization_insert
+                        BEFORE INSERT ON organizaciones
+                        FOR EACH ROW EXECUTE FUNCTION fn_probe_organization_insert();
+                    """);
+
+            Map<String, List<String>> before = snapshot(connection);
+            long probeBefore = count(connection, "SELECT last_value FROM rehearsal_backfill_probe_seq");
+            assertThat(count(connection, "SELECT count(*) FROM pacientes WHERE organizacion_id IS NULL"))
+                    .isEqualTo(2);
+
+            SQLException failure = catchThrowableOfType(
+                    SQLException.class, () -> ejecutarScript(connection, migration016()));
+            assertThat((Throwable) failure).isNotNull();
+            assertThat(failure.getSQLState()).isEqualTo("23502");
+            assertThat(failure.getMessage()).contains("MIGRACIÓN 016: existen pacientes sin organizacion_id");
+
+            // The non-transactional sequence proves that the first backfill inserted an organization
+            // before the later guard failed. Clear PostgreSQL's aborted transaction before readback.
+            try (var rollback = connection.createStatement()) {
+                rollback.execute("ROLLBACK");
+            }
+            assertThat(count(connection, "SELECT last_value FROM rehearsal_backfill_probe_seq"))
+                    .isGreaterThan(probeBefore);
+            assertThat(snapshot(connection)).as("schema and rows after failed migration").isEqualTo(before);
+            assertThat(count(connection, """
+                    SELECT count(*) FROM organizaciones
+                    WHERE creado_por_id='30000000-0000-0000-0000-000000000001'
+                    """)).isZero();
+            assertThat(count(connection, """
+                    SELECT count(*) FROM pacientes_terapeutas
+                    WHERE paciente_id IN ('32000000-0000-0000-0000-000000000001',
+                                          '32000000-0000-0000-0000-000000000002')
+                    """)).isZero();
+            assertNullability(connection, "YES", "NO", "YES");
+        }
     }
 
     @Test
