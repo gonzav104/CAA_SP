@@ -14,7 +14,6 @@ import com.caa.api.models.MembresiaId;
 import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.PacienteTerapeutaRepository;
@@ -99,7 +98,7 @@ class OrganizacionPacienteControllerIntegrationTest {
                 .id(terapeutaId)
                 .email("terapeuta@test.com")
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build();
 
         Organizacion organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();

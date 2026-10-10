@@ -12,7 +12,6 @@ import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.MembresiaRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
@@ -112,7 +111,7 @@ class PictogramaCustomIntegrationTest {
                 .email("terapeuta@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build();
 
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();

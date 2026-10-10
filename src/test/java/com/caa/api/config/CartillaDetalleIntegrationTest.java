@@ -16,7 +16,6 @@ import com.caa.api.models.Paciente;
 import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
@@ -118,7 +117,7 @@ class CartillaDetalleIntegrationTest {
                 .id(UUID.randomUUID())
                 .email("terapeuta@test.com")
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build();
 
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();

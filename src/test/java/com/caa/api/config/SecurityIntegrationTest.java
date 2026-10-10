@@ -1,6 +1,5 @@
 package com.caa.api.config;
 
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
@@ -85,7 +84,7 @@ class SecurityIntegrationTest {
                 .email("integration@ejemplo.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Integration Test")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .creadoEn(LocalDateTime.of(2026, 9, 1, 10, 0))
                 .build();
     }
@@ -238,7 +237,7 @@ class SecurityIntegrationTest {
                 .andExpect(jsonPath("$.id").value(usuarioTest.getId().toString()))
                 .andExpect(jsonPath("$.email").value("integration@ejemplo.com"))
                 .andExpect(jsonPath("$.nombre").value("Integration Test"))
-                .andExpect(jsonPath("$.rol").value("TERAPEUTA"))
+                .andExpect(jsonPath("$.rol").doesNotExist())
                 .andExpect(jsonPath("$.creadoEn").exists());
     }
 

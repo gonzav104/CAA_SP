@@ -16,7 +16,6 @@ import com.caa.api.models.Membresia;
 import com.caa.api.models.MembresiaId;
 import com.caa.api.models.Organizacion;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.MembresiaRepository;
 import com.caa.api.repositories.OrganizacionRepository;
@@ -91,11 +90,11 @@ class MiembroControllerIntegrationTest {
         organizacionId = UUID.randomUUID();
 
         owner = Usuario.builder().id(UUID.randomUUID()).email("owner@test.com").nombre("Owner")
-                .rol(RolUsuario.TERAPEUTA).build();
+                .build();
         admin = Usuario.builder().id(UUID.randomUUID()).email("admin@test.com").nombre("Admin")
-                .rol(RolUsuario.TERAPEUTA).build();
+                .build();
         miembro = Usuario.builder().id(UUID.randomUUID()).email("miembro@test.com").nombre("Miembro")
-                .rol(RolUsuario.TERAPEUTA).build();
+                .build();
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").creadoPor(owner).build();
 
         tokenOwner = jwtService.generarToken(owner);

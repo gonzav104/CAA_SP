@@ -25,7 +25,6 @@ import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.PictogramaGlobal;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
@@ -143,15 +142,15 @@ class CartillaOwnershipIntegrationTest {
         terapeuta = Usuario.builder()
                 .id(UUID.randomUUID()).email("terapeuta@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
-                .nombre("Terapeuta").rol(RolUsuario.TERAPEUTA).build();
+                .nombre("Terapeuta").build();
         familiarEdicion = Usuario.builder()
                 .id(UUID.randomUUID()).email("edicion@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
-                .nombre("Familiar Edicion").rol(RolUsuario.FAMILIAR).build();
+                .nombre("Familiar Edicion").build();
         familiarLectura = Usuario.builder()
                 .id(UUID.randomUUID()).email("lectura@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
-                .nombre("Familiar Lectura").rol(RolUsuario.FAMILIAR).build();
+                .nombre("Familiar Lectura").build();
 
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
         paciente = Paciente.builder()

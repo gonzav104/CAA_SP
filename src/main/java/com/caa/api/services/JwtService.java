@@ -34,11 +34,8 @@ public class JwtService {
      * Subject = email, claim "tokenVersion" = versión actual del token del usuario (fallback 0 si
      * es null — datos viejos), issued = ahora, expiracion configurable.
      * <p>
-     * NO incluye un claim "rol": la autorización ya no se resuelve desde {@code RolUsuario}
-     * (design-part2 §15 stage 6, cutover; AccesoService/Membresia son la fuente de verdad). Dejar
-     * de leer {@code usuario.getRol()} aquí es, además, obligatorio: tras el cambio de contrato de
-     * registro (spec user-registration MODIFIED) un usuario recién registrado nace con
-     * {@code rol = null}, y {@code .name()} sobre ese null rompería el login con un NPE.
+     * NO incluye un claim "rol": la autorización se resuelve mediante
+     * {@code AccesoService}/{@code Membresia} desde la base de datos.
      */
     public String generarToken(Usuario usuario) {
         Date ahora = new Date();

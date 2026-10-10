@@ -18,7 +18,6 @@ import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PictogramaCustom;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.ItemCartillaRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
@@ -79,7 +78,7 @@ class PictogramaCustomServiceTest {
                 .id(UUID.randomUUID())
                 .email("terapeuta@test.com")
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build();
 
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
@@ -138,7 +137,7 @@ class PictogramaCustomServiceTest {
                 .id(UUID.randomUUID())
                 .email("familiar@test.com")
                 .nombre("Mama")
-                .rol(RolUsuario.FAMILIAR)
+
                 .build();
 
         given(usuarioRepository.findByEmail(familiar.getEmail())).willReturn(Optional.of(familiar));
@@ -184,7 +183,7 @@ class PictogramaCustomServiceTest {
                 .id(UUID.randomUUID())
                 .email("familiar@test.com")
                 .nombre("Mama")
-                .rol(RolUsuario.FAMILIAR)
+
                 .build();
 
         given(usuarioRepository.findByEmail(familiar.getEmail())).willReturn(Optional.of(familiar));
@@ -252,7 +251,7 @@ class PictogramaCustomServiceTest {
                 .id(UUID.randomUUID())
                 .email("familiar@test.com")
                 .nombre("Mama")
-                .rol(RolUsuario.FAMILIAR)
+
                 .build();
 
         given(usuarioRepository.findByEmail(familiar.getEmail())).willReturn(Optional.of(familiar));

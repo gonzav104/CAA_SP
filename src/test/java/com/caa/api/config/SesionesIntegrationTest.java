@@ -20,7 +20,6 @@ import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Sesion;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.MembresiaRepository;
@@ -114,23 +113,17 @@ class SesionesIntegrationTest {
 
         pacienteId = UUID.randomUUID();
         organizacionId = UUID.randomUUID();
-        // RolUsuario legacy: se conserva en el fixture por compatibilidad con otros usos del
-        // campo, pero ya no es leído por JwtService.generarToken ni por JwtAuthenticationFilter
-        // (design §15 stage 6, cutover de registro); ningún flujo de autorización de este
-        // archivo lo consulta.
         terapeuta = Usuario.builder()
                 .id(UUID.randomUUID())
                 .email("terapeuta@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
                 .build();
         familiar = Usuario.builder()
                 .id(UUID.randomUUID())
                 .email("familiar@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Familiar")
-                .rol(RolUsuario.FAMILIAR)
                 .build();
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
         paciente = Paciente.builder()

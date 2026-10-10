@@ -18,7 +18,6 @@ import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
@@ -97,10 +96,10 @@ class CartillaPrincipalUnicaIntegrationTest {
                 + "GENERATED ALWAYS AS (CASE WHEN es_principal THEN paciente_id END)");
         jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + INDICE_EMULADO + " ON cartillas(principal_key)");
 
-        terapeuta = crearUsuario("terapeuta@test.com", RolUsuario.TERAPEUTA);
-        otroTerapeuta = crearUsuario("otro@test.com", RolUsuario.TERAPEUTA);
-        familiarEdicion = crearUsuario("edicion@test.com", RolUsuario.FAMILIAR);
-        familiarLectura = crearUsuario("lectura@test.com", RolUsuario.FAMILIAR);
+        terapeuta = crearUsuario("terapeuta@test.com");
+        otroTerapeuta = crearUsuario("otro@test.com");
+        familiarEdicion = crearUsuario("edicion@test.com");
+        familiarLectura = crearUsuario("lectura@test.com");
 
         paciente = crearPaciente(terapeuta, "Nico");
         otroPaciente = crearPaciente(terapeuta, "Ana");
@@ -521,12 +520,11 @@ class CartillaPrincipalUnicaIntegrationTest {
         return seccion.substring(desde, hasta);
     }
 
-    private Usuario crearUsuario(String email, RolUsuario rol) {
+    private Usuario crearUsuario(String email) {
         return usuarioRepository.save(Usuario.builder()
                 .email(email)
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre(email)
-                .rol(rol)
                 .build());
     }
 

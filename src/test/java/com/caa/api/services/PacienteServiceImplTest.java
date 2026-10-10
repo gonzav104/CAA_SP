@@ -15,7 +15,6 @@ import com.caa.api.models.PacienteTerapeuta;
 import com.caa.api.models.PacienteTerapeutaId;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.MembresiaRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
@@ -83,10 +82,8 @@ class PacienteServiceImplTest {
         terapeutaId = UUID.randomUUID();
         familiarId = UUID.randomUUID();
         organizacionId = UUID.randomUUID();
-        // RolUsuario se conserva en el fixture SOLO porque el endpoint legacy POST /api/pacientes
-        // (sin organización, task 2.11) todavía lo lee; ningún flujo nuevo lo consulta.
-        terapeuta = Usuario.builder().id(terapeutaId).rol(RolUsuario.TERAPEUTA).build();
-        familiar = Usuario.builder().id(familiarId).rol(RolUsuario.FAMILIAR).build();
+        terapeuta = Usuario.builder().id(terapeutaId).build();
+        familiar = Usuario.builder().id(familiarId).build();
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
         paciente = Paciente.builder()
                 .id(pacienteId)

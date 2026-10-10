@@ -18,7 +18,6 @@ import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteTerapeuta;
 import com.caa.api.models.PacienteTerapeutaId;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.MembresiaRepository;
 import com.caa.api.repositories.OrganizacionRepository;
@@ -100,13 +99,13 @@ class PacienteTerapeutaControllerIntegrationTest {
         pacienteId = UUID.randomUUID();
 
         owner = Usuario.builder().id(UUID.randomUUID()).email("owner@test.com").nombre("Owner")
-                .rol(RolUsuario.TERAPEUTA).build();
+                .build();
         admin = Usuario.builder().id(UUID.randomUUID()).email("admin@test.com").nombre("Admin")
-                .rol(RolUsuario.TERAPEUTA).build();
+                .build();
         miembroAsignable = Usuario.builder().id(UUID.randomUUID()).email("asignable@test.com").nombre("Asignable")
-                .rol(RolUsuario.TERAPEUTA).build();
+                .build();
         miembroSinCapacidad = Usuario.builder().id(UUID.randomUUID()).email("sincapacidad@test.com")
-                .nombre("SinCapacidad").rol(RolUsuario.TERAPEUTA).build();
+                .nombre("SinCapacidad").build();
 
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").creadoPor(owner).build();
         paciente = Paciente.builder().id(pacienteId).organizacion(organizacion)

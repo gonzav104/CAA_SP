@@ -3,7 +3,6 @@ package com.caa.api.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.caa.api.models.Paciente;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -174,7 +173,7 @@ class MigracionBackfillIntegrationTest {
                 .email(email)
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre(email)
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build());
     }
 

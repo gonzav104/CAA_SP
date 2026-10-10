@@ -16,7 +16,6 @@ import com.caa.api.models.Membresia;
 import com.caa.api.models.MembresiaId;
 import com.caa.api.models.Organizacion;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.MembresiaRepository;
 import com.caa.api.repositories.OrganizacionRepository;
@@ -88,13 +87,10 @@ class OrganizacionControllerIntegrationTest {
 
         organizacionId = UUID.randomUUID();
 
-        // RolUsuario legacy: se conserva en el fixture por compatibilidad con otros tests de este
-        // archivo, pero ni JwtService.generarToken ni JwtAuthenticationFilter lo leen más (design
-        // §15 stage 6, cutover de registro); no tiene efecto sobre la autorización multi-tenant.
         owner = Usuario.builder().id(UUID.randomUUID()).email("owner@test.com").nombre("Owner")
-                .rol(RolUsuario.TERAPEUTA).build();
+                .build();
         miembro = Usuario.builder().id(UUID.randomUUID()).email("miembro@test.com").nombre("Miembro")
-                .rol(RolUsuario.TERAPEUTA).build();
+                .build();
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").creadoPor(owner).build();
 
         tokenOwner = jwtService.generarToken(owner);

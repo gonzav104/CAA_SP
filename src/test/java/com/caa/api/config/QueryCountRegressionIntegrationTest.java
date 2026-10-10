@@ -19,7 +19,6 @@ import com.caa.api.models.PacienteTerapeutaId;
 import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
@@ -146,8 +145,8 @@ class QueryCountRegressionIntegrationTest {
                 .apply(springSecurity())
                 .build();
 
-        terapeutaA = crearUsuario("terapeutaA@ejemplo.com", "Terapeuta A", RolUsuario.TERAPEUTA);
-        terapeutaB = crearUsuario("terapeutaB@ejemplo.com", "Terapeuta B", RolUsuario.TERAPEUTA);
+        terapeutaA = crearUsuario("terapeutaA@ejemplo.com", "Terapeuta A");
+        terapeutaB = crearUsuario("terapeutaB@ejemplo.com", "Terapeuta B");
 
         pacienteA = crearPaciente(terapeutaA, "Nico", "Perez");
         pacienteB = crearPaciente(terapeutaB, "Ana", "Gomez");
@@ -188,11 +187,11 @@ class QueryCountRegressionIntegrationTest {
         itemIdsAjena = new HashSet<>(java.util.List.of(itemAjeno.getId()));
 
         // familiarUno: vinculado solo a pacienteA (LECTURA); pacienteB existe y NO está vinculado.
-        familiarUno = crearUsuario("familiaruno@ejemplo.com", "Familiar Uno", RolUsuario.FAMILIAR);
+        familiarUno = crearUsuario("familiaruno@ejemplo.com", "Familiar Uno");
         vinculoUno = vincular(pacienteA, familiarUno, PermisoColaborador.LECTURA);
 
         // familiarMuchos: vinculado a 5 pacientes distintos con permisos mixtos.
-        familiarMuchos = crearUsuario("familiarmuchos@ejemplo.com", "Familiar Muchos", RolUsuario.FAMILIAR);
+        familiarMuchos = crearUsuario("familiarmuchos@ejemplo.com", "Familiar Muchos");
         for (int p = 0; p < 5; p++) {
             Paciente paciente = crearPaciente(terapeutaA, "PacienteMuchos" + p, "Apellido" + p);
             PermisoColaborador permiso = (p % 2 == 0) ? PermisoColaborador.LECTURA : PermisoColaborador.EDICION_LIMITADA;
@@ -349,7 +348,7 @@ class QueryCountRegressionIntegrationTest {
     @Test
     @DisplayName("Unión multi-tenant: conteo de queries constante independiente de K orgs / P pacientes / A asignaciones")
     void misPacientes_union_conteoConstante() throws Exception {
-        Usuario usuarioChico = crearUsuario("chico@ejemplo.com", "Chico", RolUsuario.TERAPEUTA);
+        Usuario usuarioChico = crearUsuario("chico@ejemplo.com", "Chico");
         Organizacion orgGestionChica = crearOrganizacion(usuarioChico, "OrgGestionChica");
         crearMembresia(orgGestionChica, usuarioChico, RolGestion.OWNER, false);
         crearPacienteEnOrganizacion(orgGestionChica, usuarioChico, "PacGestionChico", "Apellido");
@@ -359,7 +358,7 @@ class QueryCountRegressionIntegrationTest {
         Paciente pacAsignadoChico = crearPacienteEnOrganizacion(orgClinicaChica, usuarioChico, "PacClinicoChico", "Apellido");
         crearAsignacion(pacAsignadoChico, usuarioChico, orgClinicaChica.getId());
 
-        Usuario usuarioGrande = crearUsuario("grande@ejemplo.com", "Grande", RolUsuario.TERAPEUTA);
+        Usuario usuarioGrande = crearUsuario("grande@ejemplo.com", "Grande");
         for (int k = 0; k < 5; k++) {
             Organizacion orgGestion = crearOrganizacion(usuarioGrande, "OrgGestionGrande" + k);
             crearMembresia(orgGestion, usuarioGrande, RolGestion.OWNER, false);
@@ -385,9 +384,9 @@ class QueryCountRegressionIntegrationTest {
     @Test
     @DisplayName("Workspace MIEMBRO+esTerapeuta: conteo de queries constante independiente de P pacientes asignados")
     void workspaceOrganizacion_miembroClinico_conteoConstante() throws Exception {
-        Usuario owner = crearUsuario("ownerworkspace@ejemplo.com", "Owner", RolUsuario.TERAPEUTA);
-        Usuario miembroChico = crearUsuario("miembrochico@ejemplo.com", "MiembroChico", RolUsuario.TERAPEUTA);
-        Usuario miembroGrande = crearUsuario("miembrogrande@ejemplo.com", "MiembroGrande", RolUsuario.TERAPEUTA);
+        Usuario owner = crearUsuario("ownerworkspace@ejemplo.com", "Owner");
+        Usuario miembroChico = crearUsuario("miembrochico@ejemplo.com", "MiembroChico");
+        Usuario miembroGrande = crearUsuario("miembrogrande@ejemplo.com", "MiembroGrande");
 
         Organizacion orgChica = crearOrganizacion(owner, "WorkspaceChico");
         crearMembresia(orgChica, owner, RolGestion.OWNER, true);
@@ -497,12 +496,11 @@ class QueryCountRegressionIntegrationTest {
     //  Helpers de fixtures
     // ──────────────────────────────────────────────
 
-    private Usuario crearUsuario(String email, String nombre, RolUsuario rol) {
+    private Usuario crearUsuario(String email, String nombre) {
         return usuarioRepository.save(Usuario.builder()
                 .email(email)
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre(nombre)
-                .rol(rol)
                 .build());
     }
 

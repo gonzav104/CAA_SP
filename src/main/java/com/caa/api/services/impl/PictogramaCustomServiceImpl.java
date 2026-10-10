@@ -38,7 +38,7 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Acceso deriva del paciente (LEER), nunca de la fachada RolUsuario (design-part2 §11.2)
+        // Access derives from the patient and current tenant relationships.
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
 
         return pictogramaCustomRepository.findByPaciente_Id(pacienteId).stream()
@@ -68,7 +68,7 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de la fachada RolUsuario (design-part2 §11.2)
+        // Access derives from the patient and current tenant relationships.
         AccesoPaciente acceso = accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
         Paciente paciente = acceso.paciente();
 
@@ -91,7 +91,7 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
         Usuario usuario = usuarioRepository.findByEmail(emailUsuario)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de la fachada RolUsuario (design-part2 §11.2)
+        // Access derives from the patient and current tenant relationships.
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
 
         PictogramaCustom pictograma = pictogramaCustomRepository.findById(id)

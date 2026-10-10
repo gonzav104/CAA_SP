@@ -70,8 +70,7 @@ class UsuarioServiceTest {
                 .willReturn(Optional.empty());
         given(passwordEncoder.encode("segura123")).willReturn("$2a$10$hashFalso");
 
-        // Ningún rol es asignado al registrar (spec user-registration MODIFIED): el fixture
-        // refleja el usuario tal como lo deja UsuarioServiceImpl.registrarUsuario, sin .rol(...).
+        // Registration creates an identity; organization permissions are assigned separately.
         Usuario guardado = Usuario.builder()
                 .id(UUID.randomUUID())
                 .email("nuevo@ejemplo.com")
@@ -85,7 +84,6 @@ class UsuarioServiceTest {
 
         assertThat(response).isNotNull();
         assertThat(response.email()).isEqualTo("nuevo@ejemplo.com");
-        assertThat(response.rol()).isNull();
         verify(emailService).enviarBienvenida(guardado);
     }
 }

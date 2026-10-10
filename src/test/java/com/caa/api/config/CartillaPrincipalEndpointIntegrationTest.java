@@ -20,7 +20,6 @@ import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
@@ -105,11 +104,11 @@ class CartillaPrincipalEndpointIntegrationTest {
 
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
 
-        terapeuta = crearUsuario("terapeuta@test.com", RolUsuario.TERAPEUTA);
-        otroTerapeuta = crearUsuario("otro@test.com", RolUsuario.TERAPEUTA);
-        familiarEdicion = crearUsuario("edicion@test.com", RolUsuario.FAMILIAR);
-        familiarLectura = crearUsuario("lectura@test.com", RolUsuario.FAMILIAR);
-        familiarSinVinculo = crearUsuario("libre@test.com", RolUsuario.FAMILIAR);
+        terapeuta = crearUsuario("terapeuta@test.com");
+        otroTerapeuta = crearUsuario("otro@test.com");
+        familiarEdicion = crearUsuario("edicion@test.com");
+        familiarLectura = crearUsuario("lectura@test.com");
+        familiarSinVinculo = crearUsuario("libre@test.com");
 
         paciente = crearPaciente(terapeuta, "Nico");
         otroPaciente = crearPaciente(terapeuta, "Ana");
@@ -440,12 +439,11 @@ class CartillaPrincipalEndpointIntegrationTest {
         assertThat(maximo).isLessThanOrEqualTo(1);
     }
 
-    private Usuario crearUsuario(String email, RolUsuario rol) {
+    private Usuario crearUsuario(String email) {
         return usuarioRepository.save(Usuario.builder()
                 .email(email)
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre(email)
-                .rol(rol)
                 .build());
     }
 

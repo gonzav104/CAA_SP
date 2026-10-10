@@ -19,7 +19,6 @@ import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.InvitacionRepository;
 import com.caa.api.repositories.MembresiaRepository;
@@ -113,10 +112,6 @@ class ColaboradorControllerIntegrationTest {
         terapeuta = Usuario.builder()
                 .id(UUID.randomUUID()).email("terapeuta@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
-                // RolUsuario es legacy y ya no se usa para autorización (Membresia la reemplaza),
-                // pero JwtService todavía lo exige para emitir el token (tarea 10.4, fuera de
-                // alcance aquí): se fija solo para que generarToken no lance NPE.
-                .rol(RolUsuario.TERAPEUTA)
                 .nombre("Terapeuta").build();
 
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").creadoPor(terapeuta).build();

@@ -4,7 +4,6 @@ import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.RolGestion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.services.impl.EmailServiceImpl;
 import com.resend.Resend;
@@ -52,7 +51,7 @@ class EmailServiceTest {
                 .id(UUID.randomUUID())
                 .email("mama@ejemplo.com")
                 .nombre("Mama de Nico")
-                .rol(RolUsuario.FAMILIAR)
+
                 .build();
         paciente = Paciente.builder()
                 .id(UUID.randomUUID())

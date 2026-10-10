@@ -10,7 +10,6 @@ import com.caa.api.models.ItemCartilla;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.PictogramaGlobal;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
@@ -73,8 +72,8 @@ class AccesoFamiliarServiceTest {
         @BeforeEach
         void setUp() {
             pacienteId = UUID.randomUUID();
-            terapeuta = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.TERAPEUTA).build();
-            familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
+            terapeuta = Usuario.builder().id(UUID.randomUUID()).build();
+            familiar = Usuario.builder().id(UUID.randomUUID()).build();
             paciente = Paciente.builder().id(pacienteId).terapeuta(terapeuta).build();
         }
 
@@ -163,7 +162,7 @@ class AccesoFamiliarServiceTest {
         @BeforeEach
         void setUp() {
             pacienteId = UUID.randomUUID();
-            familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
+            familiar = Usuario.builder().id(UUID.randomUUID()).build();
             paciente = Paciente.builder().id(pacienteId).build();
         }
 
@@ -221,7 +220,7 @@ class AccesoFamiliarServiceTest {
         @Test
         @DisplayName("Familiar con EDICION_LIMITADA puede PUT la categoría (acceso deriva del paciente, no del creador)")
         void familiarEdicionLimitadaPuedeActualizarCategoria() {
-            Usuario familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
+            Usuario familiar = Usuario.builder().id(UUID.randomUUID()).build();
             given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
             given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
                     .willReturn(new AccesoPaciente(paciente, null, false, PermisoColaborador.EDICION_LIMITADA));
@@ -240,7 +239,7 @@ class AccesoFamiliarServiceTest {
         @Test
         @DisplayName("Familiar sin acceso de EDITAR_CONTENIDO no puede eliminar la categoría (404 genérico)")
         void familiarSinAccesoNoPuedeEliminarCategoria() {
-            Usuario familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
+            Usuario familiar = Usuario.builder().id(UUID.randomUUID()).build();
             given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
             given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
                     .willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
@@ -294,7 +293,7 @@ class AccesoFamiliarServiceTest {
         @Test
         @DisplayName("Familiar con EDICION_LIMITADA puede PUT el item (acceso deriva del paciente, no del creador)")
         void familiarEdicionLimitadaPuedeActualizarItem() {
-            Usuario familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
+            Usuario familiar = Usuario.builder().id(UUID.randomUUID()).build();
             UUID globalId = UUID.randomUUID();
             PictogramaGlobal global = PictogramaGlobal.builder().id(globalId).etiqueta("Saludo").build();
 
@@ -323,7 +322,7 @@ class AccesoFamiliarServiceTest {
         @Test
         @DisplayName("Familiar sin acceso de EDITAR_CONTENIDO no puede eliminar el item (404 genérico)")
         void familiarSinAccesoNoPuedeEliminarItem() {
-            Usuario familiar = Usuario.builder().id(UUID.randomUUID()).rol(RolUsuario.FAMILIAR).build();
+            Usuario familiar = Usuario.builder().id(UUID.randomUUID()).build();
             given(usuarioRepository.findByEmail("familiar@ejemplo.com")).willReturn(Optional.of(familiar));
             given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
                     .willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));

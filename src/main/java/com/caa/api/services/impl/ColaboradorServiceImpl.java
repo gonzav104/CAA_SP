@@ -23,8 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Gestión de colaboradores (familiares) de un paciente (spec {@code patient-collaborators}
  * MODIFICADA; design-part2 §11.2, §13). Autorización vía {@code AccesoService.Capacidad.
  * GESTION_CLINICA} (rolGestion OWNER/ADMIN de la organización del paciente, o miembro asignado
- * con esTerapeuta=true) — ya NO vía {@code terapeuta_id} directo ni filtro global
- * {@code RolUsuario.FAMILIAR}. Agregar un colaborador ahora crea una invitación
+ * con esTerapeuta=true). Agregar un colaborador ahora crea una invitación
  * {@code PACIENTE_FAMILIAR}: el email destino no necesita tener cuenta todavía, y nada se
  * concede hasta que la invitación se acepta (ver {@link InvitacionService}).
  */

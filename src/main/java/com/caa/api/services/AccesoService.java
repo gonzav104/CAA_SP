@@ -12,8 +12,7 @@ import java.util.UUID;
  * Único componente de resolución de autorización multi-tenant (design-part2 §11.1): responde
  * "qué puede hacer este {@link Usuario} sobre esta organización / este paciente", resuelto en
  * cada llamada desde la base de datos (sin estado de tenant en JWT/sesión). Sustituye a todo
- * branch de {@code usuario.getRol()} y a los finders {@code findByIdAndTerapeutaId} /
- * {@code findByIdAndPacienteIdAndCreadorId} de la generación anterior.
+ * las capacidades a partir de las membresías y relaciones clínicas persistidas.
  * <p>
  * {@code rolGestion} y {@code esTerapeuta} son atributos INDEPENDIENTES de {@link Membresia}:
  * ningún método de esta interfaz ni de su implementación puede tratarlos como mutuamente

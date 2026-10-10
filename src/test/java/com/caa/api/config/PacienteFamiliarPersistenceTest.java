@@ -4,7 +4,6 @@ import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.PermisoColaborador;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
@@ -57,7 +56,7 @@ class PacienteFamiliarPersistenceTest {
                 .email("terapeuta@ejemplo.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build());
 
         Paciente paciente = pacienteRepository.save(Paciente.builder()
@@ -71,7 +70,7 @@ class PacienteFamiliarPersistenceTest {
                 .email("familiar@ejemplo.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Mama de Nico")
-                .rol(RolUsuario.FAMILIAR)
+
                 .build());
 
         // Persistir el vínculo paciente-familiar con enum

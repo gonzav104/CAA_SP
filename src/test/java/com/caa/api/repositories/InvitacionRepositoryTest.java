@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.caa.api.models.EstadoInvitacion;
 import com.caa.api.models.Invitacion;
 import com.caa.api.models.Organizacion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.TipoInvitacion;
 import com.caa.api.models.Usuario;
 import java.time.LocalDateTime;
@@ -142,7 +141,7 @@ class InvitacionRepositoryTest {
                 .email(email)
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre(email)
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build());
     }
 

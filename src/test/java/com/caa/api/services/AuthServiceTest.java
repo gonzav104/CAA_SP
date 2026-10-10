@@ -8,7 +8,6 @@ import com.caa.api.dtos.RestablecerPasswordDTO;
 import com.caa.api.exceptions.CredencialesInvalidasException;
 import com.caa.api.exceptions.DemasiadosIntentosException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.AuthService.GoogleLoginResult;
@@ -74,7 +73,7 @@ class AuthServiceTest {
                 .email("test@ejemplo.com")
                 .passwordHash("$2a$10$hashedPasswordReal")
                 .nombre("Test User")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build();
     }
 
@@ -190,7 +189,7 @@ class AuthServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("completarRegistroGoogle → crea usuario de identidad únicamente, SIN ningún RolUsuario")
+    @DisplayName("completarRegistroGoogle → crea una identidad sin permisos organizacionales")
     void completarRegistroGoogle_creaUsuarioSinRol() {
         GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("id-token-nuevo");
         given(googleTokenVerifier.verificar("id-token-nuevo"))
@@ -204,11 +203,10 @@ class AuthServiceTest {
 
         GoogleLoginResult result = authService.completarRegistroGoogle(dto);
 
-        // Identidad únicamente: ningún RolUsuario es asignado (spec user-registration MODIFIED)
+        // Identity only: organization permissions are assigned separately.
         ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
         verify(usuarioRepository).save(captor.capture());
         Usuario creado = captor.getValue();
-        assertThat(creado.getRol()).isNull();
         assertThat(creado.getEmail()).isEqualTo("nuevo@ejemplo.com");
         // Un usuario recién creado arranca con tokenVersion=0 (@Builder.Default)
         assertThat(creado.getTokenVersion()).isZero();

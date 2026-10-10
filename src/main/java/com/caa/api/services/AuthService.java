@@ -60,7 +60,8 @@ public class AuthService {
 
     /**
      * Login con Google: si el usuario ya existe, emite token (devuelto en el record).
-     * Si no, pide que seleccione un rol (requiereRol=true, sin token).
+     * Si no, informa que la identidad todavía debe completar el registro
+     * ({@code requiereRol=true}, contrato conservado; sin token).
      *
      * @return pair (GoogleAuthResponseDTO, token|null)
      */
@@ -101,8 +102,7 @@ public class AuthService {
                             Optional.of(token));
                 })
                 .orElseGet(() -> {
-                    // Identidad únicamente: no se asigna ningún RolUsuario (design-part2 §15
-                    // stage 6, cutover; spec user-registration MODIFIED).
+                    // Identity only: organization access is established separately.
                     Usuario nuevo = Usuario.builder()
                             .email(googleUsuario.email())
                             .nombre(googleUsuario.nombre())

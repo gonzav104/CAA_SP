@@ -2,8 +2,6 @@ package com.caa.api.models;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -15,8 +13,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "usuarios")
@@ -39,16 +35,6 @@ public class Usuario {
 
     @Column(name = "nombre", nullable = false)
     private String nombre;
-
-    /**
-     * LEGACY: not read for authorization, not written by new flows. Relajado a nullable
-     * durante el período de dual-write del modelo multi-tenant (design §6); la fuente de
-     * verdad para autorización pasa a ser {@code Membresia.rolGestion} / {@code esTerapeuta}.
-     */
-    @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
-    @Column(name = "rol", nullable = true)
-    private RolUsuario rol;
 
     @Column(name = "reset_token")
     private String resetToken;

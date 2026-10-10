@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.caa.api.models.Organizacion;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -122,7 +121,7 @@ class OrganizacionRepositoryTest {
                 .email("creador-" + UUID.randomUUID() + "@organizacion.test")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Creador")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build());
         return organizacionRepository.save(Organizacion.builder()
                 .nombre("Org " + UUID.randomUUID())

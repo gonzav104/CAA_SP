@@ -1,6 +1,5 @@
 package com.caa.api.config;
 
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -74,7 +73,7 @@ class ErrorContractIntegrationTest {
     @Test
     @DisplayName("POST /api/pacientes (endpoint legacy REMOVIDO, tarea 3.7c) → 405, no 403; nunca persiste")
     void postPacientesLegacy_removido_devuelve405YNoPersiste() throws Exception {
-        // El antiguo POST /api/pacientes (sin organización, RolUsuario) fue eliminado: el único
+        // El antiguo POST /api/pacientes (sin organización) fue eliminado: el único
         // camino de creación es POST /api/organizaciones/{organizacionId}/pacientes. La ruta
         // /api/pacientes sigue existiendo (GET/PUT/DELETE), así que el dispatcher la reconoce
         // pero rechaza el método con 405 Method Not Allowed, no 404 ni 403.
@@ -83,7 +82,7 @@ class ErrorContractIntegrationTest {
                 .id(familiarId)
                 .email("familiar@test.com")
                 .nombre("Familiar")
-                .rol(RolUsuario.FAMILIAR)
+
                 .build();
         given(usuarioRepository.findByEmail("familiar@test.com")).willReturn(Optional.of(familiar));
         String token = jwtService.generarToken(familiar);
@@ -109,7 +108,7 @@ class ErrorContractIntegrationTest {
                 .id(terapeutaId)
                 .email("terapeuta@test.com")
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build();
         given(usuarioRepository.findByEmail("terapeuta@test.com")).willReturn(Optional.of(terapeuta));
         String token = jwtService.generarToken(terapeuta);

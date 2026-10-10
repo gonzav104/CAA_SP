@@ -80,7 +80,7 @@ CAA_SP/
     │   ├── controllers/      # 10 controllers REST (rutas anidadas por ownership)
     │   ├── services/         # 11 interfaces + impl + AuthService, JwtService, RateLimitService, ...
     │   ├── repositories/     # 9 Spring Data JPA (ownership a nivel de query)
-    │   ├── models/           # 10 entidades + 3 enums (RolUsuario, PermisoColaborador, ParadigmaCartilla)
+    │   ├── models/           # Entidades y enums del dominio multi-tenant
     │   ├── dtos/             # 36 records (request/response) con Bean Validation
     │   ├── exceptions/       # Conflicto, RecursoNoEncontrado, AccesoDenegado, CredencialesInvalidas, ...
     │   └── config/           # SecurityConfig, JwtAuthenticationFilter, GlobalExceptionHandler, OpenApiConfig, ...
@@ -140,7 +140,7 @@ La app lee todo de variables de entorno (o del archivo `.env` local cargado por 
 
 | Tabla | Propósito | Claves / constraints clave |
 |---|---|---|
-| `usuarios` | Terapeutas y familiares | `email` UNIQUE · `rol` enum · `reset_token` · `token_version` (invalidación de sesiones) |
+| `usuarios` | Identidades autenticables | `email` UNIQUE · `reset_token` · `token_version` (invalidación de sesiones). `rol` es una columna legacy nullable, no mapeada por JPA |
 | `pacientes` | Pacientes | `terapeuta_id` FK → `usuarios` **RESTRICT** |
 | `pacientes_familiares` | Vínculo familiar ↔ paciente | PK compuesta `(paciente_id, usuario_id)` · `permiso` enum · FK CASCADE |
 | `sesiones` | Sesiones clínicas (solo terapeuta) | FK → `pacientes` CASCADE |
@@ -179,12 +179,12 @@ Base URL: `http://localhost:8080` (dev). Prefijo de dominio: `/api/**`; autentic
 |---|---|---|---|
 | `POST` | `/auth/login` | `{email, password}` | Setea cookie `jwt` (httpOnly + SameSite=Lax). 401 genérico si falla. Rate limit 5/15 min. |
 | `POST` | `/auth/google` | `{idToken}` | Login con Google (idToken verificado server-side). |
-| `POST` | `/auth/google/completar-registro` | `{idToken, rol}` | Alta vía Google para cuentas nuevas. |
+| `POST` | `/auth/google/completar-registro` | `{idToken}` | Alta de identidad vía Google; los permisos se asignan mediante membresías. |
 | `POST` | `/auth/olvide-password` | `{email}` | Envía email de recupero. Respuesta **idéntica** exista o no el email. Rate limit 3/15 min. |
 | `POST` | `/auth/restablecer-password` | `{token, password}` | Cambia la password con token de un solo uso (1 h, hasheado SHA-256 en BD). Invalida sesiones previas (`token_version`++). |
 | `POST` | `/auth/logout` | — | Borra la cookie `jwt`. |
-| `POST` | `/api/usuarios/registro` | `{email, password, nombre, rol}` | Crea cuenta. **No setea cookie** (el front debe llevar al login). |
-| `GET` | `/api/usuarios/me` | — | Usuario autenticado actual. |
+| `POST` | `/api/usuarios/registro` | `{email, password, nombre}` | Crea una identidad sin permisos organizacionales. **No setea cookie** (el front debe llevar al login). |
+| `GET` | `/api/usuarios/me` | — | Usuario autenticado actual (`id`, `email`, `nombre`, `creadoEn`; sin rol global). |
 
 ### Pacientes
 

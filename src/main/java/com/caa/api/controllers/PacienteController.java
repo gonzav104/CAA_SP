@@ -24,7 +24,7 @@ public class PacienteController {
 
     private final PacienteService pacienteService;
 
-    // NOTA (tarea 3.7c): el antiguo POST /api/pacientes (sin organización, RolUsuario) fue
+    // The former organization-less POST /api/pacientes endpoint was
     // REMOVIDO. El único camino de creación es ahora
     // POST /api/organizaciones/{organizacionId}/pacientes (OrganizacionPacienteController,
     // introducido en la Fase 2). Esto es una ruptura de contrato documentada y confirmada por

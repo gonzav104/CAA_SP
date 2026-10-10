@@ -37,9 +37,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 /**
- * Tarea 3.6: migrado de {@code PacienteRepository.findByIdAndTerapeutaId} (terapeuta-only,
- * global {@code RolUsuario}) a {@code AccesoService.exigirCapacidad(GESTION_CLINICA)}
- * (design-part2 §11.2). La regla funcional NO cambia: GESTION_CLINICA exige
+ * Autorización mediante {@code AccesoService.exigirCapacidad(GESTION_CLINICA)}
+ * (design-part2 §11.2). La regla funcional exige
  * {@code acceso.esEquipo()} (gestión OWNER/ADMIN o miembro clínico asignado), que nunca es
  * verdadero para un acceso puramente familiar — la exclusión de familiares se preserva.
  */
