@@ -15,7 +15,7 @@ Remove only `usuarios.rol` and `pacientes.terapeuta_id` after the completed code
 
 - [x] WU-A: Atomic migration 017, rejection/rollback/data-preservation tests, historical extractor boundaries.
 - [x] WU-B: Final-state bootstrap, compose mount, schema-equivalence test and operator documentation.
-- [ ] WU-C: Independent full suite and real-data-copy rehearsal; stop before active database execution (parent verifier).
+- [x] WU-C: Independent full suite and real-data-copy rehearsal; stop before active database execution (parent verifier).
 
 Routes: A/B delegated writer (multi-file SQL and tests); C delegated verifier (isolated PostgreSQL and runtime checks). Meaningful RED → GREEN tests run on PostgreSQL 15/Testcontainers. No synthetic RED is required for passive documentation.
 
@@ -41,7 +41,7 @@ WU-A RED: `./mvnw -o test -Dtest=LegacyCleanupPostgresIntegrationTest` on isolat
 
 WU-A GREEN: same command, 8 tests, zero failures/errors/skips. Tests cover complete retained-data equality, rerun, pre-016/partial state, unexpected index/check, changed known index, string-bodied function and view-triggered transactional rollback. Added full public function/view snapshot coverage for rejection assertions. Directed historical regression is recorded with WU-B.
 
-WU-B implementation completed below; final independent verification remains pending.
+WU-B implementation and independent WU-C verification are complete; evidence follows.
 
 WU-A regression: `LegacyCleanupPostgresIntegrationTest,CutoverRehearsalPostgresIntegrationTest,MigracionBackfillPostgresIntegrationTest`: 12 tests green. First combined run had one infrastructure connection-refused error before test SQL; unchanged rerun passed all 12. Historical `init.sql` prefix is byte-for-byte identical to HEAD. `git diff --check` clean.
 
@@ -61,4 +61,43 @@ WU-B GREEN: `./mvnw -o test -Dtest=LegacyCleanupPostgresIntegrationTest,CutoverR
 
 WU-B source rollback boundary: bootstrap.sql, Compose SQL mount, README/operator guidance, final-schema equivalence and bounded historical fixture setup. Reverting these files does not alter any existing persistent schema. No active database was accessed or changed.
 
-Next: WU-C independent full suite once, restore/rehearse 017 against a real-data post-cutover copy, start backend against that isolated post-017 schema, and report before authorizing active execution. No claim of active 017 application is made.
+Next: report the completed rehearsal and stop. Applying 017 to active `caa_db` requires separate explicit authorization; it has NOT been applied there.
+
+## Independent WU-C receipt
+
+- WU-B commit: `b803271 feat(db): bootstrap new installations without legacy columns` (577 additions, 37 deletions); with WU-A `fafed00`, 942 authored lines versus the 700–1000 forecast.
+- `./mvnw -o test` ran once at final verification: **561 tests, 0 failures, 0 errors, 0 skipped**, 68 fresh XML reports; one stale XML report excluded from totals.
+- `./mvnw -o -DskipTests package`: **BUILD SUCCESS**. `git diff --check`: clean.
+- PostgreSQL **15.19** real-data copy: exact committed 017 applied successfully, then reapplication was a verified no-op. Retained schema and all 13 table counts/fingerprints were identical before/after, excluding exactly the intentionally dropped values.
+- Removed exactly the two approved columns, `fk_paciente_terapeuta`, `idx_pacientes_terapeuta`, and the FK's four internal RI triggers. An independent pre-017 evidence copy verified the exact `tgconstraint` linkage of all four triggers.
+- Preserved `rol_usuario`, all `cartillas.creador_id` values/FK/index, and every other schema object and relation.
+- Backend started against the isolated post-017 copy, skipped existing seed data, and passed **42 HTTP checks: 25 × 200, 2 × 401, 15 × 404**, including expected authorization denials. It did not load the project's source `.env`; Resend health probing was disabled.
+- Backend stopped after checks. Both rehearsal clones are retained and stopped. Active `caa_postgres` remains stopped with identical state/mounts; it was neither accessed nor started/modified. This is container-state evidence, not a new active-data query.
+
+### Preserved table counts
+
+| Table | Before = after |
+|---|---:|
+| usuarios | 42 |
+| organizaciones | 26 |
+| membresias | 26 |
+| pacientes | 66 |
+| pacientes_terapeutas | 66 |
+| pacientes_familiares | 4 |
+| cartillas | 51 |
+| categorias | 117 |
+| items_cartilla | 358 |
+| pictogramas_custom | 6 |
+| pictogramas_globales | 68 |
+| sesiones | 26 |
+| invitaciones | 0 |
+
+### Private recovery evidence and limitations
+
+- Private pre-017 backup: `backups/physical-legacy-rehearsal-20261010T202450Z/pre017.dump`, **82,950 bytes**, SHA256 `aba6863f5406df808da8b913f62e1f10bf3489a2f287fbe3a291551d3f8edc4a`. Archive listing verified; this receipt does **not** claim that this particular logical backup was restore-tested.
+- Sanitized verifier receipt: `backups/physical-legacy-rehearsal-20261010T202450Z/sanitized-run-summary.json`. Backup contents remain ignored/private and were not committed.
+- Exact 017 SHA256: `24f2ba042f5d0a207420fbf62d09bda99ce85a39a251953e51c0e82182f97351`; historical prefix remained identical.
+- Rehearsal setbacks were harness-only: the initial strict schema oracle omitted the approved FK's internal RI triggers, Docker reassigned the clone's random port after restart, and private harness binding/alias issues needed correction. Exact dependency classification and verified port were corrected without source/SQL changes or data failures.
+- Arbitrary dynamic SQL and external legacy clients still require operational confirmation. Engram mirror remains pending authoritative host session registration.
+
+**Outcome: PASS, STOPPED BEFORE ACTIVE APPLICATION.** No active migration, RDD, push, prune, backup deletion or volume deletion occurred.

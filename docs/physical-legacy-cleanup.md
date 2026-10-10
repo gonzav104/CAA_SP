@@ -79,4 +79,4 @@ A successful rerun requires both columns absent, no leftover approved legacy obj
 
 Directed tests cover success, complete retained-data equality, no-op rerun, pre-016 and partial-state rejection, unknown local index/check, changed index definition, explicit function consumer, external-view rollback and fresh-bootstrap equivalence. Historical migration extraction stops at its own boundary, so 016 tests never accidentally run 017.
 
-The parent verifier owns the final once-only full suite and real-data-copy backend rehearsal. Operational evidence is recorded in `odd/tasks/physical-legacy-cleanup.md`; this document does not claim that 017 has run against active `caa_db`.
+Independent verification completed: the once-only full suite passed 561 tests, and the PostgreSQL 15.19 real-data-copy rehearsal preserved all retained fingerprints and passed 42 HTTP checks. Operational evidence and limitations are recorded in `odd/tasks/physical-legacy-cleanup.md`. Active `caa_db` was not accessed or modified; applying 017 there still requires separate authorization.
