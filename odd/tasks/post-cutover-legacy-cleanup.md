@@ -64,4 +64,8 @@ Remove obsolete Java compatibility paths now that `caa_db` is officially post-cu
 
 - Engram mirror topic: `odd/post-cutover-legacy-cleanup/tasks`.
 - Mirror status: pending; no registered Engram session identity is available to this worker.
-- Next step: the parent verifier decides the minimal follow-up for the already-attempted full suite, including the independent Testcontainers connection-refused error, and completes post-cutover backend startup verification.
+- Final full suite: `./mvnw -o test` passed on `f609401` with 551 tests, 0 failures, 0 errors, and 0 skipped.
+- Final targeted PostgreSQL verification: readiness and deferred OWNER-trigger tests passed together (8 tests, 0 failures, 0 errors, and 0 skipped).
+- Startup verification: the current executable JAR started successfully with read-only connections against a PostgreSQL 15.19 cold copy of the stopped post-cutover data volume; the active container and volume were not started or modified.
+- Final repository checks: production legacy-reference searches returned zero matches, `git diff --check` passed, and the worktree was clean before this verification receipt.
+- Next step: no implementation work remains in this cleanup; physical legacy-column removal is a separate, explicitly deferred objective.
