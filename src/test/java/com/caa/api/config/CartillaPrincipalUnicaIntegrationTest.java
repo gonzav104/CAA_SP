@@ -529,9 +529,7 @@ class CartillaPrincipalUnicaIntegrationTest {
     }
 
     /**
-     * Crea el paciente dentro de una organización NUEVA cuyo {@code duenio} es OWNER
-     * (esTerapeuta=true), para que el acceso vía {@code AccesoService} (tarea 3.3) resuelva
-     * acceso de equipo igual que antes lo hacía {@code findByIdAndTerapeutaId}.
+     * Crea el paciente dentro de una organización nueva cuyo {@code duenio} es OWNER y terapeuta.
      */
     private Paciente crearPaciente(Usuario duenio, String nombre) {
         Organizacion organizacion = organizacionRepository.save(Organizacion.builder()
@@ -547,7 +545,6 @@ class CartillaPrincipalUnicaIntegrationTest {
                 .build());
         return pacienteRepository.save(Paciente.builder()
                 .organizacion(organizacion)
-                .terapeuta(duenio)
                 .nombre(nombre)
                 .apellido("Perez")
                 .fechaNacimiento(LocalDate.of(2015, 5, 10))

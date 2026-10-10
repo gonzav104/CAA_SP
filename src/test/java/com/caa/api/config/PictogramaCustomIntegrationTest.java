@@ -37,9 +37,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
- * {@code crearPictograma} migrado a {@code AccesoService.exigirCapacidad(EDITAR_CONTENIDO)}
- * (tareas 3.5 continuación, design-part2 §11.2). El acceso al paciente deriva de la
- * {@code Membresia} en su organización, no de {@code findByIdAndTerapeutaId}.
+ * {@code crearPictograma} autorizado mediante
+ * {@code AccesoService.exigirCapacidad(EDITAR_CONTENIDO)}. El acceso al paciente deriva de sus
+ * relaciones multi-tenant.
  */
 @SpringBootTest
 @TestPropertySource(properties = {

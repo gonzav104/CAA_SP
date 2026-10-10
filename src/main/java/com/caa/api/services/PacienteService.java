@@ -12,8 +12,8 @@ public interface PacienteService {
 
     /**
      * {@code POST /api/organizaciones/{organizacionId}/pacientes} (design part 1 §10.3): exige
-     * {@code AccesoService.exigirAltaPaciente}; dual-write {@code terapeuta = creador} siempre;
-     * auto-asigna {@code PacienteTerapeuta(creador)} en la misma transacción solo si
+     * {@code AccesoService.exigirAltaPaciente}; auto-asigna {@code PacienteTerapeuta(creador)}
+     * en la misma transacción solo si
      * {@code esTerapeuta = true}.
      */
     PacienteResponseDTO registrarPaciente(UUID organizacionId, PacienteRegistroDTO dto, String email);

@@ -46,7 +46,7 @@ import static org.mockito.Mockito.verify;
  * Migrado (spec {@code patient-collaborators} MODIFICADA): el ciclo ya no vincula directamente —
  * pasa por una invitación {@code PACIENTE_FAMILIAR} (crear → aceptar) antes de poder listar,
  * actualizar o revocar. Autorización vía {@code Capacidad.GESTION_CLINICA} (Membresia OWNER/ADMIN
- * o miembro asignado), nunca vía {@code terapeuta_id} directo.
+ * o miembro asignado).
  */
 @SpringBootTest
 @TestPropertySource(properties = {
@@ -102,7 +102,6 @@ class ColaboradorServiceIntegrationTest {
 
         paciente = pacienteRepository.save(Paciente.builder()
                 .organizacion(organizacion)
-                .terapeuta(terapeuta)
                 .nombre("Nico")
                 .apellido("Perez")
                 .fechaNacimiento(LocalDate.of(2015, 5, 10))
@@ -207,7 +206,6 @@ class ColaboradorServiceIntegrationTest {
                 .build());
         Paciente pacienteAjeno = pacienteRepository.save(Paciente.builder()
                 .organizacion(otraOrganizacion)
-                .terapeuta(otroTerapeuta)
                 .nombre("Ana")
                 .apellido("Gomez")
                 .fechaNacimiento(LocalDate.of(2018, 1, 1))

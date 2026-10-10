@@ -16,8 +16,6 @@ public interface CartillaRepository extends JpaRepository<Cartilla, UUID> {
 
     Optional<Cartilla> findByIdAndPacienteId(UUID id, UUID pacienteId);
 
-    Optional<Cartilla> findByIdAndPacienteIdAndCreadorId(UUID id, UUID pacienteId, UUID creadorId);
-
     /**
      * Desmarca TODAS las cartillas principales del paciente (alta de una nueva principal).
      * Se ejecuta de inmediato (UPDATE masivo) y hace flush previo de lo pendiente.

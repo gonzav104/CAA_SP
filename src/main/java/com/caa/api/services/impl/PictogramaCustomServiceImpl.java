@@ -111,8 +111,7 @@ public class PictogramaCustomServiceImpl implements PictogramaCustomService {
         return toResponseDTO(actualizado);
     }
 
-    /** Baja de pictograma custom: GESTION_CLINICA (acceso de equipo), ya no terapeuta-propietario
-     * directo vía {@code findByIdAndTerapeutaId} (design-part2 §11.2, tarea 3.5). */
+    /** Baja de pictograma custom: GESTION_CLINICA (acceso de equipo). */
     @Override
     @Transactional
     public void eliminarPictograma(UUID pacienteId, UUID id, String emailUsuario) {

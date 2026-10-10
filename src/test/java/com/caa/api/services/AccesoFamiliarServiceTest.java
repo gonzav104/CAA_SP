@@ -74,7 +74,7 @@ class AccesoFamiliarServiceTest {
             pacienteId = UUID.randomUUID();
             terapeuta = Usuario.builder().id(UUID.randomUUID()).build();
             familiar = Usuario.builder().id(UUID.randomUUID()).build();
-            paciente = Paciente.builder().id(pacienteId).terapeuta(terapeuta).build();
+            paciente = Paciente.builder().id(pacienteId).build();
         }
 
         @Test

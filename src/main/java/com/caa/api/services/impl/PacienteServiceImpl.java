@@ -42,8 +42,7 @@ public class PacienteServiceImpl implements PacienteService {
     private final MembresiaRepository membresiaRepository;
 
     /**
-     * {@code POST /api/organizaciones/{organizacionId}/pacientes} (design part 1 §10.3). Dual-write
-     * {@code terapeuta = creador} SIEMPRE (columna legacy todavía NOT NULL); auto-asigna
+     * {@code POST /api/organizaciones/{organizacionId}/pacientes} (design part 1 §10.3). Auto-asigna
      * {@code PacienteTerapeuta(creador)} en la MISMA transacción solo si {@code esTerapeuta = true}.
      * Un creador OWNER/ADMIN con esTerapeuta=false crea el paciente SIN asignar (visible de todas
      * formas vía acceso organization-wide).
@@ -60,7 +59,6 @@ public class PacienteServiceImpl implements PacienteService {
                 .nombre(dto.nombre())
                 .apellido(dto.apellido())
                 .fechaNacimiento(dto.fechaNacimiento())
-                .terapeuta(creador)
                 .organizacion(membresia.getOrganizacion())
                 .build();
 
@@ -211,9 +209,7 @@ public class PacienteServiceImpl implements PacienteService {
     }
 
     private PacienteResponseDTO toResponseDTO(Paciente p, PermisoColaborador miPermiso) {
-        // organizacionId: null para pacientes legacy todavía sin backfill/organización (dual-write,
-        // design §2.6); poblado en todo flujo nuevo (task 2.10).
-        UUID organizacionId = p.getOrganizacion() != null ? p.getOrganizacion().getId() : null;
+        UUID organizacionId = p.getOrganizacion().getId();
         return new PacienteResponseDTO(
                 p.getId(),
                 p.getNombre(),

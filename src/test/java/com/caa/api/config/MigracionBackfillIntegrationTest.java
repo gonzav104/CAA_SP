@@ -2,9 +2,7 @@ package com.caa.api.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.caa.api.models.Paciente;
 import com.caa.api.models.Usuario;
-import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -57,7 +55,6 @@ import org.springframework.test.context.TestPropertySource;
 class MigracionBackfillIntegrationTest {
 
     @Autowired private UsuarioRepository usuarioRepository;
-    @Autowired private PacienteRepository pacienteRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JdbcTemplate jdbc;
 
@@ -73,7 +70,7 @@ class MigracionBackfillIntegrationTest {
     void tearDown() {
         jdbc.execute("DELETE FROM membresias");
         jdbc.execute("DELETE FROM organizaciones");
-        pacienteRepository.deleteAll();
+        jdbc.execute("DELETE FROM pacientes");
         usuarioRepository.deleteAll();
     }
 
@@ -91,6 +88,11 @@ class MigracionBackfillIntegrationTest {
         // (GenerationType.UUID), no vía default de columna; el backfill crudo necesita el default
         // a nivel de base, exactamente como lo tiene la columna real en PostgreSQL (gen_random_uuid()).
         jdbc.execute("ALTER TABLE organizaciones ALTER COLUMN id SET DEFAULT RANDOM_UUID()");
+        // The active entity no longer maps the physical legacy therapist column and now requires
+        // an organization. Recreate only the pre-cutover shape needed by this historical backfill
+        // proof, then seed it through JDBC instead of reintroducing legacy JPA compatibility.
+        jdbc.execute("ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS terapeuta_id UUID");
+        jdbc.execute("ALTER TABLE pacientes ALTER COLUMN organizacion_id DROP NOT NULL");
     }
 
     @Test
@@ -178,12 +180,11 @@ class MigracionBackfillIntegrationTest {
     }
 
     private void crearPaciente(Usuario terapeuta, String nombre) {
-        pacienteRepository.save(Paciente.builder()
-                .terapeuta(terapeuta)
-                .nombre(nombre)
-                .apellido("Perez")
-                .fechaNacimiento(LocalDate.of(2015, 5, 10))
-                .build());
+        jdbc.update(
+                "INSERT INTO pacientes "
+                        + "(id, terapeuta_id, organizacion_id, nombre, apellido, fecha_nacimiento, creado_en) "
+                        + "VALUES (?, ?, NULL, ?, 'Perez', ?, CURRENT_TIMESTAMP)",
+                UUID.randomUUID(), terapeuta.getId(), nombre, LocalDate.of(2015, 5, 10));
     }
 
     private long contarOrganizacionesDe(UUID creadoPorId) {

@@ -87,7 +87,6 @@ class PacienteServiceImplTest {
         organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
         paciente = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
                 .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")
@@ -416,7 +415,6 @@ class PacienteServiceImplTest {
     void actualizarPaciente_conGridSize_actualiza() {
         Paciente conGrid = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
                 .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")
@@ -442,7 +440,6 @@ class PacienteServiceImplTest {
     void actualizarPaciente_sinGridSize_preserva() {
         Paciente conGrid = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
                 .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")
@@ -468,7 +465,6 @@ class PacienteServiceImplTest {
     void obtenerPaciente_exponeGridSize() {
         Paciente conGrid = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
                 .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")
@@ -508,8 +504,7 @@ class PacienteServiceImplTest {
         PacienteResponseDTO resultado = pacienteService.registrarPaciente(organizacionId, dto, "terapeuta@ejemplo.com");
 
         assertThat(resultado.nombre()).isEqualTo("Nico");
-        verify(pacienteRepository).save(argThat(p ->
-                p.getTerapeuta() == terapeuta && p.getOrganizacion() == organizacion));
+        verify(pacienteRepository).save(argThat(p -> p.getOrganizacion() == organizacion));
         verify(pacienteTerapeutaRepository).save(argThat(pt ->
                 pt.getId().equals(new PacienteTerapeutaId(pacienteId, terapeutaId))
                         && pt.getOrganizacionId().equals(organizacionId)));

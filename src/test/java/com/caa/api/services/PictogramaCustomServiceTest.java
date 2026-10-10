@@ -85,7 +85,6 @@ class PictogramaCustomServiceTest {
 
         paciente = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
                 .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")

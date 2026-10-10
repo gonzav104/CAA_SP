@@ -121,7 +121,6 @@ class OrganizacionPacienteControllerIntegrationTest {
         Organizacion organizacion = membresiaOwner.getOrganizacion();
         Paciente guardado = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
                 .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")

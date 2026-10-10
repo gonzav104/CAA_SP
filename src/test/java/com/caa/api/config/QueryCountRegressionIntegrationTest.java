@@ -351,22 +351,22 @@ class QueryCountRegressionIntegrationTest {
         Usuario usuarioChico = crearUsuario("chico@ejemplo.com", "Chico");
         Organizacion orgGestionChica = crearOrganizacion(usuarioChico, "OrgGestionChica");
         crearMembresia(orgGestionChica, usuarioChico, RolGestion.OWNER, false);
-        crearPacienteEnOrganizacion(orgGestionChica, usuarioChico, "PacGestionChico", "Apellido");
+        crearPacienteEnOrganizacion(orgGestionChica, "PacGestionChico", "Apellido");
 
         Organizacion orgClinicaChica = crearOrganizacion(usuarioChico, "OrgClinicaChica");
         crearMembresia(orgClinicaChica, usuarioChico, RolGestion.MIEMBRO, true);
-        Paciente pacAsignadoChico = crearPacienteEnOrganizacion(orgClinicaChica, usuarioChico, "PacClinicoChico", "Apellido");
+        Paciente pacAsignadoChico = crearPacienteEnOrganizacion(orgClinicaChica, "PacClinicoChico", "Apellido");
         crearAsignacion(pacAsignadoChico, usuarioChico, orgClinicaChica.getId());
 
         Usuario usuarioGrande = crearUsuario("grande@ejemplo.com", "Grande");
         for (int k = 0; k < 5; k++) {
             Organizacion orgGestion = crearOrganizacion(usuarioGrande, "OrgGestionGrande" + k);
             crearMembresia(orgGestion, usuarioGrande, RolGestion.OWNER, false);
-            crearPacienteEnOrganizacion(orgGestion, usuarioGrande, "PacGestionGrande" + k, "Apellido");
+            crearPacienteEnOrganizacion(orgGestion, "PacGestionGrande" + k, "Apellido");
 
             Organizacion orgClinica = crearOrganizacion(usuarioGrande, "OrgClinicaGrande" + k);
             crearMembresia(orgClinica, usuarioGrande, RolGestion.MIEMBRO, true);
-            Paciente pacAsignado = crearPacienteEnOrganizacion(orgClinica, usuarioGrande, "PacClinicoGrande" + k, "Apellido");
+            Paciente pacAsignado = crearPacienteEnOrganizacion(orgClinica, "PacClinicoGrande" + k, "Apellido");
             crearAsignacion(pacAsignado, usuarioGrande, orgClinica.getId());
         }
 
@@ -391,14 +391,14 @@ class QueryCountRegressionIntegrationTest {
         Organizacion orgChica = crearOrganizacion(owner, "WorkspaceChico");
         crearMembresia(orgChica, owner, RolGestion.OWNER, true);
         crearMembresia(orgChica, miembroChico, RolGestion.MIEMBRO, true);
-        Paciente pacChico1 = crearPacienteEnOrganizacion(orgChica, owner, "WsPacChico1", "Apellido");
+        Paciente pacChico1 = crearPacienteEnOrganizacion(orgChica, "WsPacChico1", "Apellido");
         crearAsignacion(pacChico1, miembroChico, orgChica.getId());
 
         Organizacion orgGrande = crearOrganizacion(owner, "WorkspaceGrande");
         crearMembresia(orgGrande, owner, RolGestion.OWNER, true);
         crearMembresia(orgGrande, miembroGrande, RolGestion.MIEMBRO, true);
         for (int p = 0; p < 5; p++) {
-            Paciente pacGrande = crearPacienteEnOrganizacion(orgGrande, owner, "WsPacGrande" + p, "Apellido");
+            Paciente pacGrande = crearPacienteEnOrganizacion(orgGrande, "WsPacGrande" + p, "Apellido");
             crearAsignacion(pacGrande, miembroGrande, orgGrande.getId());
         }
 
@@ -505,16 +505,13 @@ class QueryCountRegressionIntegrationTest {
     }
 
     /**
-     * Crea el paciente dentro de una organización NUEVA cuyo {@code terapeuta} es OWNER
-     * (esTerapeuta=true), para que el acceso vía {@code AccesoService} (tarea 3.3, design-part2
-     * §11.2) resuelva acceso de equipo igual que antes lo hacía {@code findByIdAndTerapeutaId}.
+     * Crea el paciente dentro de una organización nueva cuyo {@code terapeuta} es OWNER y terapeuta.
      */
     private Paciente crearPaciente(Usuario terapeuta, String nombre, String apellido) {
         Organizacion organizacion = crearOrganizacion(terapeuta, nombre + " Org");
         crearMembresia(organizacion, terapeuta, RolGestion.OWNER, true);
         return pacienteRepository.save(Paciente.builder()
                 .organizacion(organizacion)
-                .terapeuta(terapeuta)
                 .nombre(nombre)
                 .apellido(apellido)
                 .fechaNacimiento(LocalDate.of(2015, 5, 10))
@@ -566,10 +563,9 @@ class QueryCountRegressionIntegrationTest {
                 .build());
     }
 
-    private Paciente crearPacienteEnOrganizacion(Organizacion organizacion, Usuario terapeutaDualWrite, String nombre, String apellido) {
+    private Paciente crearPacienteEnOrganizacion(Organizacion organizacion, String nombre, String apellido) {
         return pacienteRepository.save(Paciente.builder()
                 .organizacion(organizacion)
-                .terapeuta(terapeutaDualWrite)
                 .nombre(nombre)
                 .apellido(apellido)
                 .fechaNacimiento(LocalDate.of(2015, 5, 10))

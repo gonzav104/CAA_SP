@@ -36,17 +36,18 @@ Remove obsolete Java compatibility paths now that `caa_db` is officially post-cu
   - Checks: `./mvnw -o test -Dtest=UsuarioServiceTest,AuthServiceTest,JwtServiceTest,SecurityIntegrationTest`; `git diff --check`; bounded global role-reference search.
   - Test-first exception: this removes dead persistence/response compatibility and has no meaningful behavioral RED; compile/test failures during removal are not recorded as RED.
   - Evidence: production and test searches contain no `RolUsuario`, `getRol`, `setRol`, or user `.rol(...)` references; 42 focused tests passed. The first sandboxed run was unavailable because Mockito could not self-attach, then the identical command passed outside the sandbox.
-- [ ] **WU-B — Remove the patient therapist dual-write from active code.**
+- [x] **WU-B — Remove the patient therapist dual-write from active code.**
   - Route: delegated direct; multi-file preparation and writer triggers apply.
   - Acceptance: `Paciente` no longer maps `terapeuta_id`; creation writes organization and `PacienteTerapeuta` only; historical H2 backfill proof seeds legacy state explicitly; current authorization remains unchanged.
   - Checks: `./mvnw -o test -Dtest=PacienteServiceImplTest,MigracionBackfillIntegrationTest,MigracionBackfillPostgresIntegrationTest,CutoverRehearsalPostgresIntegrationTest,OrganizacionPacienteControllerIntegrationTest`; `./mvnw -o compile`; `git diff --check`; bounded global therapist-reference search.
   - Test-first exception: removing a post-cutover dual-write has no meaningful deterministic RED without reintroducing legacy behavior.
-  - Evidence: pending.
+  - Evidence: 41 focused patient/backfill/PostgreSQL rehearsal tests passed; the adjusted post-cutover `PacienteFamiliar` persistence fixture passed independently; `./mvnw -o compile`, global production searches, and `git diff --check` passed. Historical H2 backfill proof now creates and seeds `terapeuta_id` explicitly through JDBC.
 
 ## Delivery
 
 - Forecast: 250–350 authored changed lines.
-- Strategy: single PR expected; if the actual authored total exceeds 400 lines, retain the two work-unit commits and recommend a feature-branch chain before any PR is created.
+- Actual: 614 authored changed lines across both work units.
+- Strategy: retain the two cohesive work-unit commits and recommend a feature-branch chain because the actual total exceeds 400 lines. No PR was created.
 - Commit boundaries:
   1. `refactor(auth): remove legacy global user role`
   2. `refactor(patients): stop legacy therapist dual-write`
@@ -55,4 +56,4 @@ Remove obsolete Java compatibility paths now that `caa_db` is officially post-cu
 
 - Engram mirror topic: `odd/post-cutover-legacy-cleanup/tasks`.
 - Mirror status: pending; no registered Engram session identity is available to this worker.
-- Next step: execute WU-B.
+- Next step: run the once-only full suite and post-cutover backend startup verification in the parent verifier.

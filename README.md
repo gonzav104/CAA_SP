@@ -136,13 +136,17 @@ La app lee todo de variables de entorno (o del archivo `.env` local cargado por 
 
 **PostgreSQL 15**, schema definido en `init.sql`, montado read-only en el contenedor (`/docker-entrypoint-initdb.d/`). `spring.jpa.hibernate.ddl-auto=none` — **Hibernate jamás crea/actualiza el esquema**; la fuente de verdad es `init.sql`.
 
-### Tablas (9)
+### Tablas principales (13)
 
 | Tabla | Propósito | Claves / constraints clave |
 |---|---|---|
 | `usuarios` | Identidades autenticables | `email` UNIQUE · `reset_token` · `token_version` (invalidación de sesiones). `rol` es una columna legacy nullable, no mapeada por JPA |
-| `pacientes` | Pacientes | `terapeuta_id` FK → `usuarios` **RESTRICT** |
+| `organizaciones` | Workspaces multi-tenant | Creador y nombre de la organización |
+| `membresias` | Acceso organizacional | PK `(organizacion_id, usuario_id)` · `rol_gestion` · `es_terapeuta` |
+| `pacientes` | Pacientes | `organizacion_id` FK **NOT NULL**. `terapeuta_id` es una columna legacy nullable, no mapeada por JPA |
+| `pacientes_terapeutas` | Asignación clínica | PK `(paciente_id, usuario_id)` · organización coherente por FK compuesta |
 | `pacientes_familiares` | Vínculo familiar ↔ paciente | PK compuesta `(paciente_id, usuario_id)` · `permiso` enum · FK CASCADE |
+| `invitaciones` | Invitaciones organizacionales/familiares | Token hasheado, vencimiento y uso único |
 | `sesiones` | Sesiones clínicas (solo terapeuta) | FK → `pacientes` CASCADE |
 | `pictogramas_globales` | Catálogo compartido (ARASAAC) | `arasaac_id` UNIQUE nullable (dedupe de materialización) |
 | `pictogramas_custom` | Pictogramas subidos por paciente | FK → `pacientes` CASCADE |
@@ -190,9 +194,9 @@ Base URL: `http://localhost:8080` (dev). Prefijo de dominio: `/api/**`; autentic
 
 | Método | Ruta | Acceso | Notas |
 |---|---|---|---|
-| `GET` | `/api/pacientes` | Autenticado | Rol-aware: terapeuta ve los propios; familiar ve los vinculados con `miPermiso`. |
-| `POST` | `/api/pacientes` | **Solo TERAPEUTA** | Crea paciente (403 si otro rol). Body: `{nombre, apellido, fechaNacimiento}`. |
-| `GET` | `/api/pacientes/{id}` | Autenticado | Ownership por terapeuta/familiar. |
+| `GET` | `/api/pacientes` | Autenticado | Unión de pacientes accesibles por gestión, asignación clínica o vínculo familiar. |
+| `POST` | `/api/organizaciones/{organizacionId}/pacientes` | Miembro con alta habilitada | Crea el paciente en la organización y autoasigna al creador si `esTerapeuta=true`. |
+| `GET` | `/api/pacientes/{id}` | Autenticado | Acceso resuelto por `AccesoService`. |
 | `PUT` | `/api/pacientes/{id}` | Autenticado | Actualiza datos. |
 | `DELETE` | `/api/pacientes/{id}` | Autenticado | Elimina (CASCADE en BD). |
 
@@ -210,14 +214,14 @@ Rutas anidadas bajo `/api/pacientes/{pacienteId}/cartillas/{cartillaId}/categori
 | `POST` / `GET` | `.../items` | Crea con `{textoHablado, ordenVisual, recursoGlobalId, recursoCustomId}` — **XOR** de recursos validado. |
 | `PUT` / `DELETE` | `.../items/{itemId}` | Solo creador. |
 
-### Sesiones (recurso clínico, solo TERAPEUTA)
+### Sesiones (recurso clínico)
 
 | Método | Ruta | Notas |
 |---|---|---|
 | `POST` / `GET` | `/api/pacientes/{pacienteId}/sesiones` | Crea / lista sesiones. |
 | `GET` / `PUT` / `DELETE` | `.../sesiones/{sesionId}` | Detalle / actualiza / elimina. |
 
-Los familiares **no** ven sesiones (decisión de modelo).
+Requieren capacidad clínica de equipo; los familiares **no** ven sesiones (decisión de modelo).
 
 ### Pictogramas
 
