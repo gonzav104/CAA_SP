@@ -42,18 +42,26 @@ Remove obsolete Java compatibility paths now that `caa_db` is officially post-cu
   - Checks: `./mvnw -o test -Dtest=PacienteServiceImplTest,MigracionBackfillIntegrationTest,MigracionBackfillPostgresIntegrationTest,CutoverRehearsalPostgresIntegrationTest,OrganizacionPacienteControllerIntegrationTest`; `./mvnw -o compile`; `git diff --check`; bounded global therapist-reference search.
   - Test-first exception: removing a post-cutover dual-write has no meaningful deterministic RED without reintroducing legacy behavior.
   - Evidence: 41 focused patient/backfill/PostgreSQL rehearsal tests passed; the adjusted post-cutover `PacienteFamiliar` persistence fixture passed independently; `./mvnw -o compile`, global production searches, and `git diff --check` passed. Historical H2 backfill proof now creates and seeds `terapeuta_id` explicitly through JDBC.
+- [x] **WU-C — Preserve the pre-cutover readiness fixture after production dual-write removal.**
+  - Route: delegated direct follow-up; the source regression is isolated to one historical PostgreSQL fixture.
+  - Observed RED: the outside-sandbox full suite ran 551 tests and reported two errors. `CutoverReadinessPostgresIntegrationTest` failed because its schema stops at 015a, where `pacientes.terapeuta_id` is still `NOT NULL`, but the cleaned production registration path no longer writes it. The other error was an independent Testcontainers connection refusal.
+  - Acceptance: keep the readiness test at the real pre-016 schema, preserve its invariants, and do not restore production dual-write or change migration SQL.
+  - Implementation: organizations and memberships still use the real service; patient and `PacienteTerapeuta` fixture rows are inserted explicitly through JDBC, including the required legacy therapist identifier.
+  - Checks: `./mvnw -o test -Dtest=CutoverReadinessPostgresIntegrationTest`; `git diff --check`; bounded global production legacy-reference search.
+  - Evidence: the focused PostgreSQL/Testcontainers readiness test passed (1 test, 0 failures, 0 errors).
 
 ## Delivery
 
 - Forecast: 250–350 authored changed lines.
-- Actual: 614 authored changed lines across both work units.
-- Strategy: retain the two cohesive work-unit commits and recommend a feature-branch chain because the actual total exceeds 400 lines. No PR was created.
+- Actual before WU-C: 614 authored changed lines across the first two work units; WU-C adds only the focused regression fixture and its evidence.
+- Strategy: retain the cohesive work-unit commits and recommend a feature-branch chain because the actual total exceeds 400 lines. No PR was created.
 - Commit boundaries:
   1. `refactor(auth): remove legacy global user role`
   2. `refactor(patients): stop legacy therapist dual-write`
+  3. `test(multitenant): preserve pre-cutover readiness fixture`
 
 ## Recovery state
 
 - Engram mirror topic: `odd/post-cutover-legacy-cleanup/tasks`.
 - Mirror status: pending; no registered Engram session identity is available to this worker.
-- Next step: run the once-only full suite and post-cutover backend startup verification in the parent verifier.
+- Next step: the parent verifier decides the minimal follow-up for the already-attempted full suite, including the independent Testcontainers connection-refused error, and completes post-cutover backend startup verification.

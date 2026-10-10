@@ -4,15 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.caa.api.dtos.OrganizacionRegistroDTO;
 import com.caa.api.dtos.OrganizacionResponseDTO;
-import com.caa.api.dtos.PacienteRegistroDTO;
 import com.caa.api.services.OrganizacionService;
-import com.caa.api.services.PacienteService;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -28,21 +26,18 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /**
  * Cutover readiness (design-part2 §15 stage 5/6, spec {@code multitenant-data-migration}
  * "Post-Migration Verification"): valida, sobre PostgreSQL real y un dataset representativo
- * creado a través de los servicios reales de la aplicación (no un seed artificial que simule el
- * modelo final a mano), los invariantes de datos de los que la MIGRACIÓN 016 (fuera de alcance de
- * este objetivo: ningún {@code ALTER ... SET NOT NULL} se ejecuta aquí) va a depender. Este test
- * NO ejecuta ni rehearsa la MIGRACIÓN 016 — solo lee el estado de los datos para confirmar que
- * esos invariantes YA se sostienen antes de ese paso.
+ * con organizaciones y membresías creadas por servicios reales, más pacientes pre-016 sembrados
+ * explícitamente con su columna legacy obligatoria, los invariantes de datos de los que depende la
+ * MIGRACIÓN 016. Este test NO ejecuta ni rehearsa la MIGRACIÓN 016: solo lee el estado previo.
  * <p>
  * Reutilizable: puede volver a correrse en cualquier momento previo al cutover real, incluido
  * durante el rehearsal manual de la Fase 9 (design-part2 tasks-part3 §9.1), para re-confirmar los
  * mismos invariantes sobre datos frescos.
  * <p>
  * A diferencia del resto de {@code *PostgresIntegrationTest} (SQL crudo, sin contexto de Spring),
- * este test necesita los beans reales {@code OrganizacionService}/{@code PacienteService} para
- * producir datos representativos de los dos caminos de creación de pacientes que el diseño
- * distingue explícitamente (auto-asignado vs. deliberadamente sin asignar, design-part2 R11) —
- * mismo patrón que {@code TransferenciaPropiedadConcurrenciaPostgresIntegrationTest}.
+ * este test necesita {@code OrganizacionService} para producir membresías representativas. Los
+ * pacientes se insertan por JDBC porque el esquema pre-016 todavía exige
+ * {@code pacientes.terapeuta_id}, mientras que el modelo Java post-cutover ya no mapea esa columna.
  */
 @Testcontainers
 @SpringBootTest
@@ -81,9 +76,6 @@ class CutoverReadinessPostgresIntegrationTest {
     @Autowired
     private OrganizacionService organizacionService;
 
-    @Autowired
-    private PacienteService pacienteService;
-
     @Test
     @DisplayName("Dataset representativo (OWNER clínico auto-asignado, OWNER de gestión sin "
             + "asignar, MIEMBRO asignado por invitación, terapeuta legacy sin pacientes) → cero "
@@ -92,18 +84,24 @@ class CutoverReadinessPostgresIntegrationTest {
         // 1) OWNER con esTerapeuta=true: crea su propio paciente → auto-asignado (caso típico,
         // design part 1 §10.3).
         String emailOwnerClinico = "owner-clinico@cutover.test";
-        crearUsuarioLegacy(emailOwnerClinico, "TERAPEUTA");
+        UUID ownerClinicoId = crearUsuarioLegacy(emailOwnerClinico, "TERAPEUTA");
         OrganizacionResponseDTO orgClinica = organizacionService.crear(
                 new OrganizacionRegistroDTO("Consultorio Clínico", true), emailOwnerClinico);
-        pacienteService.registrarPaciente(orgClinica.id(), pacienteDto("Paciente Asignado"), emailOwnerClinico);
+        try (Connection conexion = abrirConexion()) {
+            UUID pacienteId = insertarPacienteLegacy(
+                    conexion, orgClinica.id(), ownerClinicoId, "Paciente Asignado");
+            insertarPacienteTerapeuta(conexion, pacienteId, ownerClinicoId, orgClinica.id());
+        }
 
         // 2) OWNER con esTerapeuta=false: crea un paciente que queda SIN asignar — caso válido
         // por diseño (design-part2 Risk R11), NO debe ser reportado como violación por este check.
         String emailOwnerGestor = "owner-gestor@cutover.test";
-        crearUsuarioLegacy(emailOwnerGestor, "TERAPEUTA");
+        UUID ownerGestorId = crearUsuarioLegacy(emailOwnerGestor, "TERAPEUTA");
         OrganizacionResponseDTO orgGestora = organizacionService.crear(
                 new OrganizacionRegistroDTO("Consultorio Gestor", false), emailOwnerGestor);
-        pacienteService.registrarPaciente(orgGestora.id(), pacienteDto("Paciente Sin Asignar"), emailOwnerGestor);
+        try (Connection conexion = abrirConexion()) {
+            insertarPacienteLegacy(conexion, orgGestora.id(), ownerGestorId, "Paciente Sin Asignar");
+        }
 
         // 3) MIEMBRO (no OWNER/ADMIN) con esTerapeuta=true, sumado como si hubiera aceptado una
         // invitación (se inserta la fila final de Membresia directamente — mismo patrón que el
@@ -112,8 +110,10 @@ class CutoverReadinessPostgresIntegrationTest {
         UUID miembroId = crearUsuarioLegacy(emailMiembroClinico, "TERAPEUTA");
         try (Connection conexion = abrirConexion()) {
             insertarMembresia(conexion, orgGestora.id(), miembroId, "MIEMBRO", true);
+            UUID pacienteId = insertarPacienteLegacy(
+                    conexion, orgGestora.id(), miembroId, "Paciente De Miembro");
+            insertarPacienteTerapeuta(conexion, pacienteId, miembroId, orgGestora.id());
         }
-        pacienteService.registrarPaciente(orgGestora.id(), pacienteDto("Paciente De Miembro"), emailMiembroClinico);
 
         // 4) Terapeuta legacy sin pacientes y sin organización — caso explícitamente excluido del
         // backfill (spec multitenant-data-migration, "Backfill Scope Limited..."): no debe
@@ -154,9 +154,9 @@ class CutoverReadinessPostgresIntegrationTest {
                     """))
                     .as("propietarios legacy de pacientes sin ninguna Membresia").isZero();
 
-            // Invariante D: la promesa de dual-write de PacienteServiceImpl se sostiene para
-            // TODO paciente actual — si el dueño legacy (terapeuta_id) tiene esTerapeuta=true en
-            // la organización real del paciente, debe existir la fila PacienteTerapeuta
+            // Invariante D: para TODO paciente pre-016, si el dueño legacy (terapeuta_id) tiene
+            // esTerapeuta=true en la organización real del paciente, debe existir la fila
+            // PacienteTerapeuta
             // correspondiente. Nunca al revés: un dueño con esTerapeuta=false queda sin fila a
             // propósito (caso 2 arriba), por eso el filtro "m.es_terapeuta = TRUE" es necesario
             // para no producir un falso positivo.
@@ -172,10 +172,6 @@ class CutoverReadinessPostgresIntegrationTest {
                     """))
                     .as("pacientes cuyo dueño legacy es clínico pero sin fila PacienteTerapeuta").isZero();
         }
-    }
-
-    private PacienteRegistroDTO pacienteDto(String nombre) {
-        return new PacienteRegistroDTO(nombre, "Apellido", LocalDate.of(2015, 1, 1));
     }
 
     private Connection abrirConexion() throws SQLException {
@@ -208,6 +204,36 @@ class CutoverReadinessPostgresIntegrationTest {
             statement.execute(
                     "INSERT INTO membresias (organizacion_id, usuario_id, rol_gestion, es_terapeuta) VALUES ('"
                             + organizacionId + "', '" + usuarioId + "', '" + rolGestion + "', " + esTerapeuta + ")");
+        }
+    }
+
+    private UUID insertarPacienteLegacy(Connection conexion, UUID organizacionId,
+                                         UUID terapeutaId, String nombre) throws SQLException {
+        UUID pacienteId = UUID.randomUUID();
+        try (PreparedStatement statement = conexion.prepareStatement("""
+                INSERT INTO pacientes
+                    (id, terapeuta_id, organizacion_id, nombre, apellido, fecha_nacimiento)
+                VALUES (?, ?, ?, ?, 'Apellido', DATE '2015-01-01')
+                """)) {
+            statement.setObject(1, pacienteId);
+            statement.setObject(2, terapeutaId);
+            statement.setObject(3, organizacionId);
+            statement.setString(4, nombre);
+            statement.executeUpdate();
+        }
+        return pacienteId;
+    }
+
+    private void insertarPacienteTerapeuta(Connection conexion, UUID pacienteId,
+                                            UUID usuarioId, UUID organizacionId) throws SQLException {
+        try (PreparedStatement statement = conexion.prepareStatement("""
+                INSERT INTO pacientes_terapeutas (paciente_id, usuario_id, organizacion_id)
+                VALUES (?, ?, ?)
+                """)) {
+            statement.setObject(1, pacienteId);
+            statement.setObject(2, usuarioId);
+            statement.setObject(3, organizacionId);
+            statement.executeUpdate();
         }
     }
 }
