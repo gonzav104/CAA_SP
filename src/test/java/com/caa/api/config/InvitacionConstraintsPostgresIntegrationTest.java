@@ -32,7 +32,7 @@ class InvitacionConstraintsPostgresIntegrationTest extends PostgresTestcontainer
     @DisplayName("1. Invitación ORGANIZACION válida (rolGestion ADMIN/MIEMBRO + esTerapeuta no nulo, sin paciente/permiso) → aceptada")
     void organizacionValida_esAceptada() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner1@test.com");
@@ -48,7 +48,7 @@ class InvitacionConstraintsPostgresIntegrationTest extends PostgresTestcontainer
     @DisplayName("2. rolGestionPropuesto=OWNER en una invitación ORGANIZACION → rechazada por el CHECK")
     void organizacionConRolOwner_esRechazada() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner2@test.com");
@@ -65,7 +65,7 @@ class InvitacionConstraintsPostgresIntegrationTest extends PostgresTestcontainer
     @DisplayName("3. esTerapeutaPropuesto NULL en una invitación ORGANIZACION → rechazada por el CHECK")
     void organizacionSinEsTerapeutaPropuesto_esRechazada() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner3@test.com");
@@ -82,7 +82,7 @@ class InvitacionConstraintsPostgresIntegrationTest extends PostgresTestcontainer
     @DisplayName("4. Invitación ORGANIZACION con paciente_id también seteado (contexto mezclado) → rechazada por el CHECK")
     void organizacionConPacienteIdMezclado_esRechazada() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner4@test.com");
@@ -104,7 +104,7 @@ class InvitacionConstraintsPostgresIntegrationTest extends PostgresTestcontainer
     @DisplayName("5. Invitación PACIENTE_FAMILIAR válida (permiso propuesto, sin rolGestion/esTerapeuta) → aceptada")
     void familiarValida_esAceptada() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner5@test.com");
@@ -121,7 +121,7 @@ class InvitacionConstraintsPostgresIntegrationTest extends PostgresTestcontainer
     @DisplayName("6. Invitación PACIENTE_FAMILIAR con rolGestionPropuesto también seteado (contexto mezclado) → rechazada")
     void familiarConRolGestionMezclado_esRechazada() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner6@test.com");
@@ -143,7 +143,7 @@ class InvitacionConstraintsPostgresIntegrationTest extends PostgresTestcontainer
     @DisplayName("7. Segunda invitación ORGANIZACION PENDIENTE para el mismo (organización, email) → rechazada por el índice único parcial")
     void segundaInvitacionOrganizacionPendiente_mismoOrgEmail_esRechazada() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner7@test.com");
@@ -162,7 +162,7 @@ class InvitacionConstraintsPostgresIntegrationTest extends PostgresTestcontainer
     @DisplayName("8. Segunda invitación PACIENTE_FAMILIAR PENDIENTE para el mismo (paciente, email) → rechazada por el índice único parcial")
     void segundaInvitacionFamiliarPendiente_mismoPacienteEmail_esRechazada() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner8@test.com");
@@ -182,7 +182,7 @@ class InvitacionConstraintsPostgresIntegrationTest extends PostgresTestcontainer
     @DisplayName("9. Una nueva invitación PENDIENTE para el mismo (organización, email) SÍ se acepta una vez resuelta la anterior")
     void nuevaInvitacionOrganizacionPendiente_trasResolverLaAnterior_esAceptada() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner9@test.com");

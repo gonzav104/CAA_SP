@@ -46,6 +46,15 @@ final class LegacyCleanupPostgresSupport {
 
     static Map<String, List<String>> fullSnapshot(Connection connection) throws Exception {
         var snapshot = CutoverRehearsalSupport.snapshot(connection);
+        snapshot.put("schema.columns", CutoverRehearsalSupport.rows(connection, """
+                SELECT c.relname || ':' || a.attname || ':' || format_type(a.atttypid,a.atttypmod)
+                    || ':' || a.attnotnull || ':' || a.attidentity::text || ':' || a.attgenerated::text
+                    || ':' || coalesce(pg_get_expr(d.adbin,d.adrelid), '')
+                FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+                LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+                WHERE c.relnamespace='public'::regnamespace AND c.relkind IN ('r','p')
+                  AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attname
+                """));
         snapshot.put("schema.views", CutoverRehearsalSupport.rows(connection,
                 "SELECT schemaname || '.' || viewname || ':' || definition FROM pg_views "
                         + "WHERE schemaname='public' ORDER BY 1"));

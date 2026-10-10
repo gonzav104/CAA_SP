@@ -70,10 +70,10 @@ class TransferenciaPropiedadConcurrenciaPostgresIntegrationTest {
         registry.add("resend.api-key", () -> "test-resend-api-key");
     }
 
-    /** Aplica el {@code init.sql} completo (esquema real, incl. MIGRACIÓN 011-015a) una sola vez. */
+    /** Aplica el bootstrap final post-017 una sola vez sobre PostgreSQL descartable. */
     @BeforeAll
     static void aplicarEsquema() throws Exception {
-        String sql = Files.readString(Path.of("init.sql"), StandardCharsets.UTF_8);
+        String sql = Files.readString(Path.of("bootstrap.sql"), StandardCharsets.UTF_8);
         try (Connection conexion = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
              Statement statement = conexion.createStatement()) {
@@ -165,8 +165,8 @@ class TransferenciaPropiedadConcurrenciaPostgresIntegrationTest {
     private UUID crearUsuario(Connection conexion, String email) throws SQLException {
         try (Statement statement = conexion.createStatement();
              ResultSet resultSet = statement.executeQuery(
-                     "INSERT INTO usuarios (email, password_hash, nombre, rol) VALUES ('"
-                             + email + "', 'hash', 'Test', 'TERAPEUTA') RETURNING id")) {
+                     "INSERT INTO usuarios (email, password_hash, nombre) VALUES ('"
+                             + email + "', 'hash', 'Test') RETURNING id")) {
             resultSet.next();
             return (UUID) resultSet.getObject(1);
         }

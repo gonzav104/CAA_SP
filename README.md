@@ -53,7 +53,7 @@ Para correr los **tests**: `./mvnw test` (285 tests, suite completa en ~40 s).
 | Lenguaje | Java 21 |
 | Framework | Spring Boot 4.1.1 (Web MVC, Data JPA, Security, Validation) |
 | Seguridad | Spring Security 7 + JWT (jjwt 0.13.0) en cookie httpOnly |
-| Persistencia | PostgreSQL 15 (`docker-compose`), Hibernate, esquema vía `init.sql` (`ddl-auto=none`) |
+| Persistencia | PostgreSQL 15 (`docker-compose`), Hibernate, bootstrap vía `bootstrap.sql`; upgrades en `init.sql` (`ddl-auto=none`) |
 | Docs API | SpringDoc OpenAPI 3.1.0 (Swagger UI) |
 | Cloud | Cloudinary (upload de imágenes) |
 | Emails | Resend (transaccionales: bienvenida, recupero de contraseña, invitaciones) |
@@ -69,7 +69,8 @@ Para correr los **tests**: `./mvnw test` (285 tests, suite completa en ~40 s).
 
 ```
 CAA_SP/
-├── init.sql                  # Esquema PostgreSQL + migraciones idempotentes (001→006)
+├── bootstrap.sql             # Esquema final para bases nuevas, sin columnas legacy
+├── init.sql                  # Historial de esquema y migraciones de upgrade (001→017)
 ├── docker-compose.yml        # Postgres (dev) + API (prod) — lectura de .env con format: raw
 ├── Dockerfile                # Multi-stage: build JDK 21 → runtime JRE 21 (usuario sin privilegios)
 ├── .env.example              # Plantilla de variables (copiar a .env, que NO se versiona)
@@ -134,33 +135,33 @@ La app lee todo de variables de entorno (o del archivo `.env` local cargado por 
 
 ## Base de datos
 
-**PostgreSQL 15**, schema definido en `init.sql`, montado read-only en el contenedor (`/docker-entrypoint-initdb.d/`). `spring.jpa.hibernate.ddl-auto=none` — **Hibernate jamás crea/actualiza el esquema**; la fuente de verdad es `init.sql`.
+**PostgreSQL 15**. `bootstrap.sql` define el esquema final para instalaciones nuevas y se monta read-only como `/docker-entrypoint-initdb.d/init.sql`. `init.sql` conserva el historial y los bloques de upgrade. `spring.jpa.hibernate.ddl-auto=none`: **Hibernate jamás crea/actualiza el esquema**. Un test PostgreSQL compara el bootstrap con el resultado de las migraciones históricas.
 
 ### Tablas principales (13)
 
 | Tabla | Propósito | Claves / constraints clave |
 |---|---|---|
-| `usuarios` | Identidades autenticables | `email` UNIQUE · `reset_token` · `token_version` (invalidación de sesiones). `rol` es una columna legacy nullable, no mapeada por JPA |
+| `usuarios` | Identidades autenticables | `email` UNIQUE · `reset_token` · `token_version` (invalidación de sesiones). `rol` no existe en instalaciones nuevas ni después de 017 |
 | `organizaciones` | Workspaces multi-tenant | Creador y nombre de la organización |
 | `membresias` | Acceso organizacional | PK `(organizacion_id, usuario_id)` · `rol_gestion` · `es_terapeuta` |
-| `pacientes` | Pacientes | `organizacion_id` FK **NOT NULL**. `terapeuta_id` es una columna legacy nullable, no mapeada por JPA |
+| `pacientes` | Pacientes | `organizacion_id` FK **NOT NULL**. `terapeuta_id` no existe después de 017 |
 | `pacientes_terapeutas` | Asignación clínica | PK `(paciente_id, usuario_id)` · organización coherente por FK compuesta |
 | `pacientes_familiares` | Vínculo familiar ↔ paciente | PK compuesta `(paciente_id, usuario_id)` · `permiso` enum · FK CASCADE |
 | `invitaciones` | Invitaciones organizacionales/familiares | Token hasheado, vencimiento y uso único |
 | `sesiones` | Sesiones clínicas (solo terapeuta) | FK → `pacientes` CASCADE |
 | `pictogramas_globales` | Catálogo compartido (ARASAAC) | `arasaac_id` UNIQUE nullable (dedupe de materialización) |
 | `pictogramas_custom` | Pictogramas subidos por paciente | FK → `pacientes` CASCADE |
-| `cartillas` | Tableros de comunicación | `creador_id` (ownership por creador) · `paradigma` enum · FK CASCADE/RESTRICT |
+| `cartillas` | Tableros de comunicación | `creador_id` (metadata/auditoría) · `paradigma` enum · FK CASCADE/RESTRICT |
 | `categorias` | Categorías del tablero | `cartilla_id` FK CASCADE · `orden` |
 | `items_cartilla` | Celdas del tablero | `recurso_global_id` XOR `recurso_custom_id` (CHECK `check_origen_recurso`) · FK SET NULL |
 
-### Regla entidad ↔ init.sql (obligatoria)
+### Regla entidad ↔ esquema (obligatoria)
 
-> Si una tarea modifica una entidad JPA o la estructura persistente: **revisar `init.sql` y actualizarlo** (nombres, tipos, constraints y relaciones). **No** dejar una entidad y un esquema desincronizados a propósito.
+> Si una tarea modifica una entidad JPA o la estructura persistente: **actualizar `bootstrap.sql` y agregar el upgrade correspondiente en `init.sql`** (nombres, tipos, constraints y relaciones; preservar los bloques históricos). **No** dejar una entidad y un esquema desincronizados a propósito.
 
 ### Migraciones
 
-`init.sql` se ejecuta **una sola vez en un volumen vacío**. Para bases ya inicializadas, contiene **migraciones idempotentes** embebidas (bloques `ALTER TABLE ... IF NOT EXISTS` + backfill):
+`bootstrap.sql` se ejecuta **una sola vez en una base vacía** y no es idempotente. En bases existentes se extrae y ejecuta únicamente el bloque de migración aplicable de `init.sql`, nunca el archivo completo. Los backfills 011–016 se conservan para upgrades históricos, pero **no se vuelven a ejecutar después de 017**. La 017 elimina solo `usuarios.rol`, `pacientes.terapeuta_id` y sus dependencias aprobadas; no toca `cartillas.creador_id`. Su aplicación real requiere autorización separada. Ver [procedimiento y límites](docs/physical-legacy-cleanup.md).
 
 | Migración | Cambio |
 |---|---|
@@ -170,6 +171,10 @@ La app lee todo de variables de entorno (o del archivo `.env` local cargado por 
 | 004 | `usuarios.token_version` (invalidar sesiones al restablecer password) |
 | 005 | `pictogramas_globales.arasaac_id` + UNIQUE (dedupe ARASAAC) |
 | 006 | `cartillas.paradigma` (TAXONOMICA / ESQUEMATICA, default `TAXONOMICA`) |
+| 007–010 | Core, grilla, texto visible y cartilla principal única |
+| 011–015a | Modelo multi-tenant, backfills e invariantes OWNER |
+| 016 | Cutover: organización obligatoria, columnas legacy nullable |
+| 017 | Cleanup físico de `usuarios.rol` y `pacientes.terapeuta_id` |
 
 ---
 
@@ -324,7 +329,7 @@ Las consultas de corte pesado (detalle de cartilla con categorías + ítems + pi
 
 **285 tests · 0 fallos · ~40 s** (estado 2026-09-18). Distribución: unitarios de servicios + DTOs + integración HTTP (MockMvc) + config.
 
-- Corren contra **H2 en memoria** (`ddl-auto=create-drop`); `init.sql` no se ejecuta en la suite.
+- Los tests generales usan **H2 en memoria** (`ddl-auto=create-drop`). Los tests PostgreSQL/Testcontainers ejecutan el bootstrap final o bloques históricos aislados para probar FKs, triggers, migraciones y atomicidad reales.
 - Cubren casos límite: token vencido/firma inválida, 401 genérico, 429 rate limit, errores sin fuga de secretos, ownership entre terapeutas, permiso de familiar coincidente con su vínculo, regresión de conteo de queries.
 - Convención: cada test con su propio email (cero flakiness), reloj inyectado en rate limit (sin sleeps).
 
@@ -346,7 +351,7 @@ docker compose up -d --build     # levanta db + api
 | Pieza | Detalle |
 |---|---|
 | `Dockerfile` | Stage 1: `eclipse-temurin:21-jdk-alpine` → `./mvnw clean package -DskipTests`. Stage 2: `eclipse-temurin:21-jre-alpine`, usuario sin privilegios `caa`, `COPY --from=build .../api-*.jar app.jar`. |
-| `docker-compose.yml` | `db` (postgres:15-alpine, healthcheck `pg_isready`, volúmenes persistente `db_data_final` + init.sql :ro) y `api` (build local, `SPRING_PROFILES_ACTIVE=prod`, override `DATASOURCE_URL=jdbc:postgresql://db:5432/...`). |
+| `docker-compose.yml` | `db` (postgres:15-alpine, healthcheck `pg_isready`, volúmenes persistente `db_data_final` + bootstrap.sql :ro) y `api` (build local, `SPRING_PROFILES_ACTIVE=prod`, override `DATASOURCE_URL=jdbc:postgresql://db:5432/...`). |
 | `.env` como única fuente | Ambos servicios usan `env_file` con `format: raw`. **Motivo**: Compose interpola `${VAR}` y trunca los valores en el primer `$` — un secreto con `$` llegaba incompleto en silencio. `format: raw` entrega el valor byte a byte. Requiere Compose ≥ 2.24 (verificado en v5.5.1). |
 | `application-prod.properties` | Deltas de producción: SpringDoc/Swagger **off** + `app.cookie.secure=true`. Se activa **solo** desde compose; en el host el perfil queda sin activar (Swagger disponible en dev). |
 

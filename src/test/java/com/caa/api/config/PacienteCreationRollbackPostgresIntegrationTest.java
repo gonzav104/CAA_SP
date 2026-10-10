@@ -33,7 +33,7 @@ class PacienteCreationRollbackPostgresIntegrationTest extends PostgresTestcontai
     @DisplayName("Fallo de fk_pt_membresia en pacientes_terapeutas → ningún Paciente huérfano persiste tras el rollback")
     void fallaAsignacion_revierteTransaccionCompleta_sinPacienteHuerfano() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID owner = crearUsuario(conexion, "owner-rollback@test.com");

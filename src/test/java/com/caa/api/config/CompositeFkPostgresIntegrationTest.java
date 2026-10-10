@@ -27,7 +27,7 @@ class CompositeFkPostgresIntegrationTest extends PostgresTestcontainerBase {
     @DisplayName("1. (organizacion_id, usuario_id) que no corresponde a ninguna Membresia → rechazado por fk_pt_membresia")
     void organizacionUsuarioSinMembresiaEsRechazado() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID ownerA = crearUsuario(conexion, "ownerA@test.com");
@@ -48,7 +48,7 @@ class CompositeFkPostgresIntegrationTest extends PostgresTestcontainerBase {
     @DisplayName("2. (paciente_id, organizacion_id) que no corresponde a pacientes(id, organizacion_id) → rechazado por fk_pt_paciente_organizacion")
     void pacienteDeOtraOrganizacionEsRechazado() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
 
             UUID ownerA = crearUsuario(conexion, "ownerA2@test.com");

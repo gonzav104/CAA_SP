@@ -29,7 +29,7 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     @DisplayName("1. Demover al único OWNER sin promover reemplazo: el UPDATE no falla, pero el COMMIT sí (deferred)")
     void demoverSinPromoverFallaEnElCommitNoEnElUpdate() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
             UUID usuarioOwner = crearUsuario(conexion, "owner@test.com");
             UUID organizacion = crearOrganizacion(conexion, usuarioOwner);
@@ -52,7 +52,7 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
             + "la organización de ORIGEN queda sin OWNER y el COMMIT debe fallar")
     void moverUnicoOwnerAOtraOrganizacionDejaOrigenSinOwner() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
             UUID ownerOrigen = crearUsuario(conexion, "owner-origen@test.com");
             UUID ownerDestino = crearUsuario(conexion, "owner-destino@test.com");
@@ -82,7 +82,7 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     @DisplayName("2. Demover al OWNER actual Y promover un reemplazo en la MISMA transacción: el COMMIT tiene éxito (swap)")
     void demoverYPromoverEnLaMismaTransaccionTieneExito() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
             UUID owner = crearUsuario(conexion, "owner2@test.com");
             UUID nuevoOwner = crearUsuario(conexion, "nuevo-owner@test.com");
@@ -115,7 +115,7 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     @DisplayName("3a. Actualizar SOLO es_terapeuta en la fila del OWNER: el COMMIT tiene éxito sin disparar ninguna excepción")
     void actualizarSoloEsTerapeutaCommiteaSinError() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
             UUID owner = crearUsuario(conexion, "owner3@test.com");
             UUID organizacion = crearOrganizacion(conexion, owner);
@@ -142,7 +142,7 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
     @DisplayName("3b. El trigger declara UPDATE OF exactamente (rol_gestion, organizacion_id) — es_terapeuta queda fuera a propósito")
     void elTriggerSoloEscuchaRolGestionYOrganizacionId() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
 
             Set<String> columnasEscuchadas = new HashSet<>();
             try (Statement statement = conexion.createStatement();
@@ -164,7 +164,7 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
             + "(el DELETE no debe fallar por referenciar NEW, que no está asignado)")
     void eliminarMembresiaNoOwnerCommiteaSinError() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
             UUID owner = crearUsuario(conexion, "owner4a@test.com");
             UUID admin = crearUsuario(conexion, "admin4a@test.com");
@@ -195,7 +195,7 @@ class OwnerDeferredTriggerPostgresIntegrationTest extends PostgresTestcontainerB
             + "el COMMIT tiene éxito en vez de abortar por 'record \"new\" is not assigned yet'")
     void eliminarOrganizacionConCascadaAMembresiaOwnerCommiteaSinError() throws SQLException, IOException {
         try (Connection conexion = abrirConexion()) {
-            aplicarInitSqlHasta(conexion, null);
+            aplicarInitSqlHasta(conexion, "-- MIGRACIÓN 017");
             conexion.setAutoCommit(false);
             UUID owner = crearUsuario(conexion, "owner4b@test.com");
             UUID organizacion = crearOrganizacion(conexion, owner);
