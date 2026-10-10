@@ -731,3 +731,109 @@ ALTER TABLE pacientes ALTER COLUMN terapeuta_id DROP NOT NULL;
 ALTER TABLE usuarios ALTER COLUMN rol DROP NOT NULL;
 
 COMMIT;
+
+-- ========================================================
+-- MIGRACIÓN 017 — cleanup físico de columnas legacy post-cutover
+-- Aplicar SOLO este bloque, con backup verificado y sin escritores legacy.
+-- Sin DML ni CASCADE. Un error exige ROLLBACK y detener el procedimiento.
+-- Las migraciones históricas anteriores NO se pueden repetir después de este paso.
+-- ========================================================
+BEGIN;
+SET LOCAL search_path = public, pg_catalog;
+SET LOCAL lock_timeout = '5s';
+LOCK TABLE public.usuarios, public.pacientes IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE public.organizaciones, public.membresias, public.pacientes_terapeutas,
+           public.pacientes_familiares IN SHARE MODE;
+
+DO $$
+DECLARE
+    v_rol smallint;
+    v_terapeuta smallint;
+    v_fk oid;
+    v_index oid;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute
+                   WHERE attrelid = 'public.pacientes'::regclass AND attname = 'organizacion_id'
+                     AND NOT attisdropped AND attnotnull AND atttypid = 'uuid'::regtype)
+       OR EXISTS (SELECT 1 FROM public.pacientes WHERE organizacion_id IS NULL)
+       OR EXISTS (SELECT 1 FROM public.organizaciones o
+                  WHERE (SELECT count(*) FROM public.membresias m
+                         WHERE m.organizacion_id = o.id AND m.rol_gestion = 'OWNER') <> 1)
+       OR EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE connamespace = 'public'::regnamespace AND NOT convalidated) THEN
+        RAISE EXCEPTION '017: post-cutover preconditions failed';
+    END IF;
+
+    SELECT attnum INTO v_rol FROM pg_attribute
+    WHERE attrelid = 'public.usuarios'::regclass AND attname = 'rol' AND NOT attisdropped;
+    SELECT attnum INTO v_terapeuta FROM pg_attribute
+    WHERE attrelid = 'public.pacientes'::regclass AND attname = 'terapeuta_id' AND NOT attisdropped;
+    IF (v_rol IS NULL) <> (v_terapeuta IS NULL) THEN
+        RAISE EXCEPTION '017: partial cleanup requires investigation';
+    END IF;
+    IF v_rol IS NULL THEN
+        IF to_regclass('public.idx_pacientes_terapeuta') IS NOT NULL
+           OR EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.pacientes'::regclass
+                      AND conname = 'fk_paciente_terapeuta') THEN
+            RAISE EXCEPTION '017: unexpected legacy objects after cleanup';
+        END IF;
+        RETURN;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_attribute
+               WHERE (attrelid = 'public.usuarios'::regclass AND attnum = v_rol
+                      AND (attnotnull OR atttypid <> 'public.rol_usuario'::regtype OR atthasdef))
+                  OR (attrelid = 'public.pacientes'::regclass AND attnum = v_terapeuta
+                      AND (attnotnull OR atttypid <> 'uuid'::regtype OR atthasdef))) THEN
+        RAISE EXCEPTION '017: post-cutover legacy column shape differs';
+    END IF;
+
+    SELECT oid INTO v_fk FROM pg_constraint
+    WHERE conrelid = 'public.pacientes'::regclass AND conname = 'fk_paciente_terapeuta'
+      AND contype = 'f' AND convalidated AND NOT condeferrable
+      AND pg_get_constraintdef(oid) = 'FOREIGN KEY (terapeuta_id) REFERENCES usuarios(id) ON DELETE RESTRICT';
+    IF v_fk IS NULL THEN
+        RAISE EXCEPTION '017: legacy foreign key differs from the approved inventory';
+    END IF;
+    SELECT i.indexrelid INTO v_index FROM pg_index i
+    WHERE i.indrelid = 'public.pacientes'::regclass AND i.indisvalid AND i.indisready
+      AND pg_get_indexdef(i.indexrelid) =
+          'CREATE INDEX idx_pacientes_terapeuta ON public.pacientes USING btree (terapeuta_id)';
+    IF v_index IS NULL THEN
+        RAISE EXCEPTION '017: legacy index differs from the approved inventory';
+    END IF;
+
+    -- DROP COLUMN RESTRICT still silently drops local checks/indexes: explicitly reject
+    -- every unapproved automatically dependent object before either column is removed.
+    IF EXISTS (
+        SELECT 1 FROM pg_depend d
+        WHERE d.refclassid = 'pg_class'::regclass
+          AND ((d.refobjid = 'public.usuarios'::regclass AND d.refobjsubid = v_rol)
+            OR (d.refobjid = 'public.pacientes'::regclass AND d.refobjsubid = v_terapeuta))
+          AND d.deptype IN ('a', 'i')
+          AND NOT (d.classid = 'pg_constraint'::regclass AND d.objid = v_fk)
+          AND NOT (d.classid = 'pg_class'::regclass AND d.objid = v_index)
+    ) THEN
+        RAISE EXCEPTION '017: unexpected automatically dependent legacy object';
+    END IF;
+
+    -- String-bodied functions are not fully tracked by pg_depend. This conservative
+    -- check catches explicit consumers, not arbitrary constructed dynamic SQL.
+    IF EXISTS (
+        SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp%'
+          AND (p.prosrc ~* '\mterapeuta_id\M'
+               OR (p.prosrc ~* '\musuarios\M' AND p.prosrc ~* '\mrol\M'))
+    ) THEN
+        RAISE EXCEPTION '017: function contains a legacy column reference';
+    END IF;
+
+    -- External dependencies (views, external FKs, parsed SQL functions) are left to
+    -- PostgreSQL RESTRICT. Failure of the second drop also rolls back the first.
+    ALTER TABLE public.usuarios DROP COLUMN rol RESTRICT;
+    ALTER TABLE public.pacientes DROP CONSTRAINT fk_paciente_terapeuta RESTRICT;
+    DROP INDEX public.idx_pacientes_terapeuta RESTRICT;
+    ALTER TABLE public.pacientes DROP COLUMN terapeuta_id RESTRICT;
+END $$;
+COMMIT;

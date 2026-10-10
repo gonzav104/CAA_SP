@@ -21,7 +21,8 @@ final class CutoverRehearsalSupport {
         String sql = Files.readString(Path.of("init.sql"));
         int start = sql.indexOf("-- MIGRACIÓN 016");
         assertThat(start).as("separate migration 016 block").isGreaterThanOrEqualTo(0);
-        return sql.substring(start);
+        int end = sql.indexOf("-- MIGRACIÓN 017", start);
+        return sql.substring(start, end < 0 ? sql.length() : end);
     }
 
     static long count(Connection connection, String sql) throws Exception {

@@ -56,7 +56,7 @@ class MigracionBackfillPostgresIntegrationTest extends PostgresTestcontainerBase
 
             // MIGRACIÓN 015 verbatim: backfill de pacientes.organizacion_id + pacientes_terapeutas,
             // seguido de la función y los triggers de restricción diferida.
-            String migracion015 = extraerBloque(sqlCompleto, "-- MIGRACIÓN 015", null);
+            String migracion015 = extraerBloque(sqlCompleto, "-- MIGRACIÓN 015", "-- MIGRACIÓN 015a");
             ejecutarScript(conexion, migracion015);
 
             // --- Primera corrida ---
