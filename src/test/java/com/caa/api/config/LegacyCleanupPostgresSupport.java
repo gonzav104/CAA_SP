@@ -17,7 +17,8 @@ final class LegacyCleanupPostgresSupport {
         String sql = Files.readString(Path.of("init.sql"));
         int start = sql.indexOf("-- MIGRACIÓN 017");
         assertThat(start).as("isolated migration 017 exists").isNotNegative();
-        return sql.substring(start);
+        int end = sql.indexOf("-- MIGRACIÓN 018", start);
+        return end < 0 ? sql.substring(start) : sql.substring(start, end);
     }
 
     static void seedPre017(Connection connection) throws Exception {

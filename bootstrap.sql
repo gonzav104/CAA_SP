@@ -224,6 +224,11 @@ CREATE TABLE public.sesiones (
 );
 
 CREATE TABLE public.usuarios (
+    google_sub character varying(255),
+    google_recovery_token_hash character varying(64),
+    google_recovery_expires_at timestamp without time zone,
+    google_recovery_sub character varying(255),
+    google_recovery_email character varying(255),
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     email character varying(255) NOT NULL,
     password_hash character varying(255) NOT NULL,
@@ -387,3 +392,18 @@ ALTER TABLE ONLY public.sesiones
     ADD CONSTRAINT fk_sesion_paciente FOREIGN KEY (paciente_id) REFERENCES public.pacientes(id) ON DELETE CASCADE;
 
 COMMIT;
+
+ALTER TABLE public.usuarios
+    ADD CONSTRAINT uq_usuarios_google_sub UNIQUE (google_sub),
+    ADD CONSTRAINT uq_usuarios_google_recovery_token UNIQUE (google_recovery_token_hash),
+    ADD CONSTRAINT ck_usuarios_google_sub CHECK (google_sub IS NULL OR btrim(google_sub) <> ''),
+    ADD CONSTRAINT ck_usuarios_google_recovery CHECK (
+        (google_recovery_token_hash IS NULL AND google_recovery_expires_at IS NULL
+         AND google_recovery_sub IS NULL AND google_recovery_email IS NULL)
+        OR
+        (google_recovery_token_hash IS NOT NULL AND google_recovery_expires_at IS NOT NULL
+         AND google_recovery_sub IS NOT NULL AND google_recovery_email IS NOT NULL
+         AND google_recovery_token_hash ~ '^[0-9a-f]{64}$'
+         AND btrim(google_recovery_sub) <> '' AND btrim(google_recovery_email) <> ''
+         AND google_sub IS NULL)
+    );

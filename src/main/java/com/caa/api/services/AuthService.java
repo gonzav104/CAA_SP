@@ -22,6 +22,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @Service
 @RequiredArgsConstructor
@@ -58,66 +60,53 @@ public class AuthService {
         return new AuthResponseDTO(token, "Bearer");
     }
 
-    /**
-     * Login con Google: si el usuario ya existe, emite token (devuelto en el record).
-     * Si no, informa que la identidad todavía debe completar el registro
-     * ({@code requiereRol=true}, contrato conservado; sin token).
-     *
-     * @return pair (GoogleAuthResponseDTO, token|null)
-     */
+    /** Only an explicitly persisted Google subject can authenticate an existing identity. */
     public GoogleLoginResult loginConGoogle(String idToken) {
-        GoogleUsuario googleUsuario = googleTokenVerifier.verificar(idToken)
+        GoogleUsuario google = googleTokenVerifier.verificar(idToken)
                 .orElseThrow(CredencialesInvalidasException::new);
-
-        return usuarioRepository.findByEmail(googleUsuario.email())
-                .map(usuario -> {
-                    String token = jwtService.generarToken(usuario);
-                    return new GoogleLoginResult(
-                            new GoogleAuthResponseDTO(false, "Bearer", null, null),
-                            Optional.of(token));
-                })
-                .orElseGet(() -> new GoogleLoginResult(
-                        new GoogleAuthResponseDTO(true, null, googleUsuario.email(), googleUsuario.nombre()),
-                        Optional.empty()));
+        Optional<Usuario> linked = usuarioRepository.findByGoogleSub(google.sub());
+        if (linked.isPresent()) {
+            return authenticateGoogle(linked.get(), google);
+        }
+        rejectExistingEmail(google.email());
+        return new GoogleLoginResult(
+                new GoogleAuthResponseDTO(true, null, google.email(), google.nombre()), Optional.empty());
     }
 
-    /**
-     * Completar registro de un usuario nuevo de Google.
-     * Re-verifica el idToken (nunca confiar en el email que manda el cliente).
-     * Si el usuario ya fue creado (carrera/doble click), loguea sin duplicar.
-     *
-     * @return pair (GoogleAuthResponseDTO, token)
-     */
+    @Transactional
     public GoogleLoginResult completarRegistroGoogle(GoogleCompletarRegistroDTO dto) {
-        GoogleUsuario googleUsuario = googleTokenVerifier.verificar(dto.idToken())
+        GoogleUsuario google = googleTokenVerifier.verificar(dto.idToken())
                 .orElseThrow(CredencialesInvalidasException::new);
+        Optional<Usuario> linked = usuarioRepository.findByGoogleSub(google.sub());
+        if (linked.isPresent()) {
+            return authenticateGoogle(linked.get(), google);
+        }
+        rejectExistingEmail(google.email());
+        Usuario nuevo = Usuario.builder()
+                .email(google.email()).googleSub(google.sub()).nombre(google.nombre())
+                .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString())).build();
+        try {
+            // Flush UNIQUE email/subject races before emitting credentials; never fall back to email.
+            Usuario saved = usuarioRepository.saveAndFlush(nuevo);
+            emailService.enviarBienvenida(saved);
+            return authenticateGoogle(saved, google);
+        } catch (DataIntegrityViolationException conflict) {
+            throw new CredencialesInvalidasException();
+        }
+    }
 
-        return usuarioRepository.findByEmail(googleUsuario.email())
-                .map(usuario -> {
-                    log.info("Usuario {} ya existía al completar registro Google — login directo",
-                            googleUsuario.email());
-                    String token = jwtService.generarToken(usuario);
-                    return new GoogleLoginResult(
-                            new GoogleAuthResponseDTO(false, "Bearer", null, null),
-                            Optional.of(token));
-                })
-                .orElseGet(() -> {
-                    // Identity only: organization access is established separately.
-                    Usuario nuevo = Usuario.builder()
-                            .email(googleUsuario.email())
-                            .nombre(googleUsuario.nombre())
-                            .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
-                            .build();
-                    Usuario guardado = usuarioRepository.save(nuevo);
+    private void rejectExistingEmail(String email) {
+        if (usuarioRepository.findByEmail(email).isPresent()) {
+            throw new CredencialesInvalidasException();
+        }
+    }
 
-                    // Efecto secundario: EmailServiceImpl nunca propaga excepciones.
-                    emailService.enviarBienvenida(guardado);
-
-                    String token = jwtService.generarToken(guardado);
-                    return new GoogleLoginResult(
-                            new GoogleAuthResponseDTO(false, "Bearer", null, null),
-                            Optional.of(token));
-                });
+    private GoogleLoginResult authenticateGoogle(Usuario usuario, GoogleUsuario google) {
+        if (!google.sub().equals(usuario.getGoogleSub()) || !google.email().equals(usuario.getEmail())) {
+            throw new CredencialesInvalidasException();
+        }
+        return new GoogleLoginResult(new GoogleAuthResponseDTO(false, "Bearer", null, null),
+                Optional.of(jwtService.generarToken(usuario)));
     }
 
     public record GoogleLoginResult(GoogleAuthResponseDTO dto, Optional<String> token) {

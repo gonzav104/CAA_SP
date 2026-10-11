@@ -36,6 +36,21 @@ public class Usuario {
     @Column(name = "nombre", nullable = false)
     private String nombre;
 
+    @Column(name = "google_sub", unique = true)
+    private String googleSub;
+
+    @Column(name = "google_recovery_token_hash", unique = true, length = 64)
+    private String googleRecoveryTokenHash;
+
+    @Column(name = "google_recovery_expires_at")
+    private LocalDateTime googleRecoveryExpiresAt;
+
+    @Column(name = "google_recovery_sub")
+    private String googleRecoverySub;
+
+    @Column(name = "google_recovery_email")
+    private String googleRecoveryEmail;
+
     @Column(name = "reset_token")
     private String resetToken;
 

@@ -118,8 +118,12 @@ class CutoverRehearsalPostgresIntegrationTest extends PostgresTestcontainerBase 
             apply016(connection, "idempotent repeat");
             assertThat(snapshot(connection)).isEqualTo(after);
             System.out.println("REHEARSAL post: constraints/data valid; migration-only repeat unchanged");
+            // Historical 016 proofs above remain exact. The current backend requires the
+            // current schema; advance only this disposable database before its smoke check.
+            ejecutarScript(connection, LegacyCleanupPostgresSupport.migration017());
+            ejecutarScript(connection, GoogleIdentityMigrationPostgresIntegrationTest.migration018());
             backendSmoke();
-            System.out.println("REHEARSAL backend: real Spring context and organization/patient service writes succeeded");
+            System.out.println("REHEARSAL backend (post018): real Spring context and organization/patient service writes succeeded");
 
             restore(POSTGRES);
             assertThat(snapshot(connection)).as("complete pre016 public schema and data restored").isEqualTo(before);
