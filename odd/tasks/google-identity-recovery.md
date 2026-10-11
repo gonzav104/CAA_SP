@@ -19,7 +19,7 @@ No organization, membership, role selection, frontend, CSRF, general rate-limit 
 Delivery: auto-chain / feature-branch-chain, local commits only. Forecast 900–1300 authored lines; cohesive security and PostgreSQL proof slices may need a size exception (no code compression). All three work units use delegated direct execution because they span service, persistence, schema and concurrency tests. Test-first applies to deterministic regressions; schema rehearsal uses disposable PostgreSQL 15 only.
 
 - [x] WU1 — Explicit unique Google subject; refuse email-only authentication; additive 018 and bootstrap; unit/schema regression proof.
-- [ ] WU2 — Email + Google recovery, locked atomic credential mutation, password/JWT invalidation and concurrency proof.
+- [x] WU2 — Email + Google recovery, locked atomic credential mutation, password/JWT invalidation and concurrency proof.
 - [ ] WU3 — Independent final suite/package/startup, runbook and rehearsal evidence; stop before active migration.
 
 Targeted commands:
@@ -42,3 +42,20 @@ Engram mirror pending: authoritative runtime session identity is unavailable; no
 - Runtime boundary: latest Spring context starts and tenant service smoke passes on disposable post-018 PostgreSQL. Active database untouched.
 - Rollback boundary: revert this auth/schema-code commit only before deployment; no active migration occurred. Existing historical SQL remains byte-identical.
 - WU1 cohesive slice exceeds ~400 authored lines because it includes guarded DDL and PostgreSQL evidence; recommend size exception for that slice rather than separating untested schema from behavior. No PR opened.
+
+### WU2 evidence
+
+- WU1 commit: `db1b548` (452 insertions, 65 deletions).
+- RED: public recovery endpoint request without required proof expected 400, got 401 before endpoint implementation.
+- GREEN: `GoogleTokenVerifierTest,AuthServiceTest,EmailServiceTest,RecuperoPasswordIntegrationTest,SecurityIntegrationTest`: 64 tests, zero failures/errors/skips.
+- GREEN: `GoogleIdentityMigrationPostgresIntegrationTest,GoogleRecoveryPostgresIntegrationTest,LegacyCleanupPostgresIntegrationTest,CutoverRehearsalPostgresIntegrationTest`: 32 tests, zero failures/errors/skips; includes 15 real Spring/PostgreSQL recovery tests.
+- Proof includes attacker precreation refusals, first/repeated Google subject login, subject/email conflicts, two independent recovery proofs, expired/used/reissued tokens, old-password rejection, old-JWT rejection by HTTP filter, invalidated reset links, zero tenant grants, concurrent double-consumption, UNIQUE-subject conflict rollback, and actual PostgreSQL lock waits around competing forgot/reset/recovery mutations.
+- Expected concurrent UNIQUE-subject violation is part of the passing rollback proof, not an unexpected migration failure.
+- `./mvnw -o -DskipTests package`: passed (compile/package, tests intentionally skipped). Final independent full suite/package belongs to WU3; not run by writer.
+- Reused the existing forgot-password email limiter for Google recovery issuance; no general rate-limit work.
+- WU2 rollback boundary: endpoints/service locking/email implementation and their tests; do not redeploy unsafe email-only auth or discard established bindings after actual deployment.
+- WU2 is a cohesive security slice exceeding ~400 lines because all transaction/concurrency proofs belong with its behavior; recommend size exception. No code compression, PR, RDD or push.
+
+Migration 018 SHA-256 (from its marker through EOF): `410d556bb7881d16ad2f2efa5c481ee54b6e7a07907f854c52bb08e591018c05`.
+
+Next step: independent verifier runs final full suite once and final package/read-only audit. Active caa_db remains post-017; stop before any active migration.

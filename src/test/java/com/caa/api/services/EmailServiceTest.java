@@ -71,6 +71,24 @@ class EmailServiceTest {
         given(resend.emails()).willReturn(emails);
     }
 
+    @Test
+    void googleRecoveryEscapesNamesAndUsesOnlyConfiguredDestination() throws ResendException {
+        usuario.setNombre("<script>unsafe</script>");
+        emailService.enviarRecuperacionGoogle(usuario, "safe-url-token");
+        ArgumentCaptor<CreateEmailOptions> options = ArgumentCaptor.forClass(CreateEmailOptions.class);
+        verify(emails).send(options.capture());
+        assertThat(options.getValue().getHtml()).contains("&lt;script&gt;unsafe&lt;/script&gt;",
+                "http://localhost:5173/recuperar-google?token=safe-url-token")
+                .doesNotContain("<script>");
+    }
+
+    @Test
+    void googleRecoveryDeliveryFailureDoesNotLeakOrFailOperation() throws ResendException {
+        given(emails.send(any(CreateEmailOptions.class))).willThrow(new ResendException("offline"));
+        assertThatCode(() -> emailService.enviarRecuperacionGoogle(usuario, "secret-token"))
+                .doesNotThrowAnyException();
+    }
+
     // ──────────────────────────────────────────────
     //  SAD PATHS — el fallo de envío NO se propaga
     // ──────────────────────────────────────────────

@@ -94,6 +94,15 @@ class SecurityIntegrationTest {
     // ──────────────────────────────────────────────
 
     @Test
+    void googleRecoveryEndpointsArePublicButValidateProofBodies() throws Exception {
+        for (String endpoint : new String[]{"solicitar", "completar"}) {
+            mockMvc.perform(post("/auth/google/recuperacion/" + endpoint)
+                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
     @DisplayName("Endpoint protegido SIN token → devuelve 401")
     void endpointProtegido_sinToken_devuelve401() throws Exception {
         mockMvc.perform(get("/api/pacientes")

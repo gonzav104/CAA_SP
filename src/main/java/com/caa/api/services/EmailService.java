@@ -18,6 +18,8 @@ public interface EmailService {
 
     void enviarBienvenida(Usuario usuario);
 
+    void enviarRecuperacionGoogle(Usuario usuario, String token);
+
     void enviarRecuperacionPassword(Usuario usuario, String token);
 
     /**

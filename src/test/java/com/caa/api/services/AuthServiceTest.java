@@ -311,7 +311,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("olvidePassword con email EXISTENTE → guarda el HASH del token (no el plano) con expiración y envía el token plano por email")
     void olvidePassword_emailExistente_guardaTokenYEnviaEmail() {
-        given(usuarioRepository.findByEmail("test@ejemplo.com"))
+        given(usuarioRepository.findLockedByEmail("test@ejemplo.com"))
                 .willReturn(Optional.of(usuarioExistente));
 
         authService.olvidePassword("test@ejemplo.com");
@@ -337,7 +337,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("olvidePassword con email INEXISTENTE → no guarda nada ni envía email (éxito silencioso)")
     void olvidePassword_emailInexistente_noHaceNada() {
-        given(usuarioRepository.findByEmail("noexiste@ejemplo.com"))
+        given(usuarioRepository.findLockedByEmail("noexiste@ejemplo.com"))
                 .willReturn(Optional.empty());
 
         authService.olvidePassword("noexiste@ejemplo.com");
@@ -353,7 +353,7 @@ class AuthServiceTest {
         // El token se guardó hasheado (olvidePassword nunca persiste el plano)
         usuarioExistente.setResetToken(hashSha256(token));
         usuarioExistente.setResetTokenExpira(LocalDateTime.now().plusHours(1));
-        given(usuarioRepository.findByResetToken(hashSha256(token)))
+        given(usuarioRepository.findLockedByResetToken(hashSha256(token)))
                 .willReturn(Optional.of(usuarioExistente));
         given(passwordEncoder.encode("NuevaClave1!")).willReturn("$2a$10$hashNuevo");
 
@@ -376,7 +376,7 @@ class AuthServiceTest {
         String token = "token-expirado";
         usuarioExistente.setResetToken(hashSha256(token));
         usuarioExistente.setResetTokenExpira(LocalDateTime.now().minusHours(1));
-        given(usuarioRepository.findByResetToken(hashSha256(token)))
+        given(usuarioRepository.findLockedByResetToken(hashSha256(token)))
                 .willReturn(Optional.of(usuarioExistente));
 
         assertThatThrownBy(() -> authService.restablecerPassword(
@@ -392,7 +392,7 @@ class AuthServiceTest {
     @DisplayName("restablecerPassword con token INEXISTENTE → el MISMO error genérico que el expirado")
     void restablecerPassword_tokenInexistente_mismoErrorQueExpirado() {
         // El lookup interno es por el hash del token recibido
-        given(usuarioRepository.findByResetToken(hashSha256("token-inexistente")))
+        given(usuarioRepository.findLockedByResetToken(hashSha256("token-inexistente")))
                 .willReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.restablecerPassword(
@@ -432,7 +432,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.olvidePassword("test@ejemplo.com"))
                 .isInstanceOf(DemasiadosIntentosException.class);
 
-        verify(usuarioRepository, never()).findByEmail(anyString());
+        verify(usuarioRepository, never()).findLockedByEmail(anyString());
         verify(usuarioRepository, never()).save(any());
         verify(emailService, never()).enviarRecuperacionPassword(any(), anyString());
     }

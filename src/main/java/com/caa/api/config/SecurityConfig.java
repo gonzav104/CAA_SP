@@ -65,6 +65,8 @@ public class SecurityConfig {
                         .requestMatchers("/auth/login").permitAll()
                         .requestMatchers("/auth/google").permitAll()
                         .requestMatchers("/auth/google/completar-registro").permitAll()
+                        .requestMatchers("/auth/google/recuperacion/solicitar",
+                                "/auth/google/recuperacion/completar").permitAll()
                         .requestMatchers("/auth/olvide-password").permitAll()
                         .requestMatchers("/auth/restablecer-password").permitAll()
                         .requestMatchers("/auth/logout").permitAll()

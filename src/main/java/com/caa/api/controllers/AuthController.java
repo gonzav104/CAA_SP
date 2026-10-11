@@ -4,6 +4,8 @@ import com.caa.api.dtos.AuthResponseDTO;
 import com.caa.api.dtos.GoogleAuthResponseDTO;
 import com.caa.api.dtos.GoogleCompletarRegistroDTO;
 import com.caa.api.dtos.GoogleLoginDTO;
+import com.caa.api.dtos.GoogleRecuperacionSolicitudDTO;
+import com.caa.api.dtos.GoogleRecuperacionCompletarDTO;
 import com.caa.api.dtos.LoginRequestDTO;
 import com.caa.api.dtos.OlvidePasswordDTO;
 import com.caa.api.dtos.RestablecerPasswordDTO;
@@ -68,6 +70,22 @@ public class AuthController {
 
         result.token().ifPresent(token -> setJwtCookie(response, token));
 
+        return ResponseEntity.ok(result.dto());
+    }
+
+    @PostMapping("/google/recuperacion/solicitar")
+    public ResponseEntity<Map<String, String>> solicitarRecuperacionGoogle(
+            @Valid @RequestBody GoogleRecuperacionSolicitudDTO dto) {
+        authService.solicitarRecuperacionGoogle(dto.idToken());
+        return ResponseEntity.ok(Map.of("message",
+                "Si la cuenta es elegible, recibirás un enlace para recuperar el acceso con Google"));
+    }
+
+    @PostMapping("/google/recuperacion/completar")
+    public ResponseEntity<GoogleAuthResponseDTO> completarRecuperacionGoogle(
+            @Valid @RequestBody GoogleRecuperacionCompletarDTO dto, HttpServletResponse response) {
+        GoogleLoginResult result = authService.completarRecuperacionGoogle(dto);
+        result.token().ifPresent(token -> setJwtCookie(response, token));
         return ResponseEntity.ok(result.dto());
     }
 
