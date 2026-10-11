@@ -1,6 +1,5 @@
 package com.caa.api.services;
 
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -40,7 +39,7 @@ class JwtServiceTest {
                 .email("test@ejemplo.com")
                 .passwordHash("$2a$10$hash")
                 .nombre("Test User")
-                .rol(RolUsuario.FAMILIAR)
+
                 .build();
     }
 
@@ -122,8 +121,8 @@ class JwtServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("generarToken → token tiene subject = email, claim 'rol' y claim tokenVersion")
-    void generarToken_contieneEmailYRol() {
+    @DisplayName("generarToken → token tiene subject = email y claim tokenVersion, SIN claim 'rol'")
+    void generarToken_contieneEmailYTokenVersionSinRol() {
         String token = jwtService.generarToken(usuario);
 
         assertThat(token).isNotBlank();
@@ -135,9 +134,19 @@ class JwtServiceTest {
                 .getPayload();
 
         assertThat(claims.getSubject()).isEqualTo("test@ejemplo.com");
-        assertThat(claims.get("rol", String.class)).isEqualTo("FAMILIAR");
+        // Authorization is resolved from current tenant relationships; the token has no role claim.
+        assertThat(claims.containsKey("rol")).isFalse();
         // El builder de Usuario arranca en 0 (@Builder.Default)
         assertThat(claims.get("tokenVersion", Number.class).intValue()).isZero();
+    }
+
+    @Test
+    @DisplayName("generarToken para una identidad sin permisos organizacionales → emite token")
+    void generarToken_identidadSinPermisos_emiteToken() {
+
+        String token = jwtService.generarToken(usuario);
+
+        assertThat(token).isNotBlank();
     }
 
     @Test

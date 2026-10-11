@@ -30,15 +30,19 @@ public class Paciente {
     @Column(name = "id", nullable = false)
     private UUID id;
 
+    /**
+     * Organización a la que pertenece el paciente. MIGRACIÓN 016 garantiza que todo paciente
+     * persistido tiene una organización.
+     */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
-            name = "terapeuta_id",
+            name = "organizacion_id",
             nullable = false,
-            foreignKey = @ForeignKey(name = "fk_paciente_terapeuta")
+            foreignKey = @ForeignKey(name = "fk_paciente_organizacion")
     )
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
-    private Usuario terapeuta;
+    private Organizacion organizacion;
 
     @Column(name = "nombre", nullable = false, length = 100)
     private String nombre;

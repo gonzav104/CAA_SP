@@ -12,15 +12,20 @@ import com.caa.api.dtos.CartillaRegistroDTO;
 import com.caa.api.dtos.CartillaResponseDTO;
 import com.caa.api.exceptions.AccesoDenegadoException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.PermisoColaborador;
-import com.caa.api.models.RolUsuario;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
+import com.caa.api.repositories.MembresiaRepository;
+import com.caa.api.repositories.OrganizacionRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -75,6 +80,8 @@ class CartillaPrincipalEndpointIntegrationTest {
     @Autowired private PacienteRepository pacienteRepository;
     @Autowired private PacienteFamiliarRepository pacienteFamiliarRepository;
     @Autowired private UsuarioRepository usuarioRepository;
+    @Autowired private OrganizacionRepository organizacionRepository;
+    @Autowired private MembresiaRepository membresiaRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JwtService jwtService;
     @Autowired private WebApplicationContext webApplicationContext;
@@ -97,11 +104,11 @@ class CartillaPrincipalEndpointIntegrationTest {
 
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).apply(springSecurity()).build();
 
-        terapeuta = crearUsuario("terapeuta@test.com", RolUsuario.TERAPEUTA);
-        otroTerapeuta = crearUsuario("otro@test.com", RolUsuario.TERAPEUTA);
-        familiarEdicion = crearUsuario("edicion@test.com", RolUsuario.FAMILIAR);
-        familiarLectura = crearUsuario("lectura@test.com", RolUsuario.FAMILIAR);
-        familiarSinVinculo = crearUsuario("libre@test.com", RolUsuario.FAMILIAR);
+        terapeuta = crearUsuario("terapeuta@test.com");
+        otroTerapeuta = crearUsuario("otro@test.com");
+        familiarEdicion = crearUsuario("edicion@test.com");
+        familiarLectura = crearUsuario("lectura@test.com");
+        familiarSinVinculo = crearUsuario("libre@test.com");
 
         paciente = crearPaciente(terapeuta, "Nico");
         otroPaciente = crearPaciente(terapeuta, "Ana");
@@ -116,6 +123,8 @@ class CartillaPrincipalEndpointIntegrationTest {
         cartillaRepository.deleteAll();
         pacienteFamiliarRepository.deleteAll();
         pacienteRepository.deleteAll();
+        membresiaRepository.deleteAll();
+        organizacionRepository.deleteAll();
         usuarioRepository.deleteAll();
     }
 
@@ -136,8 +145,9 @@ class CartillaPrincipalEndpointIntegrationTest {
     }
 
     @Test
-    @DisplayName("2. El terapeuta marca una cartilla creada por un FAMILIAR (EDICION_LIMITADA); renombrar/eliminar siguen siendo solo del creador")
-    void terapeutaMarcaCartillaDeFamiliarSinGanarOtrosPermisos() {
+    @DisplayName("2. El terapeuta marca una cartilla creada por un FAMILIAR (EDICION_LIMITADA); "
+            + "renombrar/eliminar ahora derivan del acceso al paciente, no de quién la creó (design-part2 §11.2, R2)")
+    void terapeutaMarcaCartillaDeFamiliarYPuedeRenombrarYEliminar() {
         CartillaResponseDTO deFamiliar = crear(familiarEdicion, paciente, "Del familiar");
 
         CartillaResponseDTO r = establecer(terapeuta, paciente, deFamiliar.id());
@@ -146,15 +156,16 @@ class CartillaPrincipalEndpointIntegrationTest {
         assertThat(r.creadorId()).isEqualTo(familiarEdicion.getId());
         assertThat(principalesDe(paciente)).containsExactly(deFamiliar.id());
 
-        // Regresión: las reglas de creador no cambian
-        assertThatThrownBy(() -> cartillaService.actualizarCartilla(paciente.getId(), deFamiliar.id(),
-                new CartillaActualizacionDTO("Renombrada", null, null), terapeuta.getEmail()))
-                .isInstanceOf(RecursoNoEncontradoException.class);
-        assertThatThrownBy(() -> cartillaService.eliminarCartilla(
-                paciente.getId(), deFamiliar.id(), terapeuta.getEmail()))
-                .isInstanceOf(RecursoNoEncontradoException.class);
-        assertThat(nombreDe(deFamiliar.id())).isEqualTo("Del familiar");
-        assertThat(principalesDe(paciente)).containsExactly(deFamiliar.id());
+        // R2: acceso deriva del paciente (miembro de equipo), nunca de creador_id — el terapeuta
+        // (OWNER de la organización) puede renombrar y eliminar una cartilla que NO creó.
+        CartillaResponseDTO renombrada = cartillaService.actualizarCartilla(paciente.getId(), deFamiliar.id(),
+                new CartillaActualizacionDTO("Renombrada", null, null), terapeuta.getEmail());
+        assertThat(renombrada.nombre()).isEqualTo("Renombrada");
+        assertThat(nombreDe(deFamiliar.id())).isEqualTo("Renombrada");
+
+        cartillaService.eliminarCartilla(paciente.getId(), deFamiliar.id(), terapeuta.getEmail());
+        assertThat(cartillaRepository.findById(deFamiliar.id())).isEmpty();
+        assertThat(principalesDe(paciente)).isEmpty();
     }
 
     @Test
@@ -166,7 +177,7 @@ class CartillaPrincipalEndpointIntegrationTest {
 
         assertThatThrownBy(() -> establecer(familiarEdicion, paciente, otra.id()))
                 .isInstanceOf(AccesoDenegadoException.class)
-                .hasMessageContaining("Solo el terapeuta responsable");
+                .hasMessageContaining("Solo un miembro del equipo");
         assertThat(principalesDe(paciente)).containsExactly(principal.id());
 
         assertThatThrownBy(() -> establecer(familiarLectura, paciente, otra.id()))
@@ -428,18 +439,31 @@ class CartillaPrincipalEndpointIntegrationTest {
         assertThat(maximo).isLessThanOrEqualTo(1);
     }
 
-    private Usuario crearUsuario(String email, RolUsuario rol) {
+    private Usuario crearUsuario(String email) {
         return usuarioRepository.save(Usuario.builder()
                 .email(email)
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre(email)
-                .rol(rol)
                 .build());
     }
 
+    /**
+     * Crea el paciente dentro de una organización nueva cuyo {@code duenio} es OWNER y terapeuta.
+     */
     private Paciente crearPaciente(Usuario duenio, String nombre) {
+        Organizacion organizacion = organizacionRepository.save(Organizacion.builder()
+                .nombre(nombre + " Org")
+                .creadoPor(duenio)
+                .build());
+        membresiaRepository.save(Membresia.builder()
+                .id(new MembresiaId(organizacion.getId(), duenio.getId()))
+                .organizacion(organizacion)
+                .usuario(duenio)
+                .rolGestion(RolGestion.OWNER)
+                .esTerapeuta(true)
+                .build());
         return pacienteRepository.save(Paciente.builder()
-                .terapeuta(duenio)
+                .organizacion(organizacion)
                 .nombre(nombre)
                 .apellido("Perez")
                 .fechaNacimiento(LocalDate.of(2015, 5, 10))

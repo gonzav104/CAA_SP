@@ -9,16 +9,21 @@ import com.caa.api.dtos.CartillaResponseDTO;
 import com.caa.api.exceptions.AccesoDenegadoException;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PermisoColaborador;
-import com.caa.api.models.RolUsuario;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
+import com.caa.api.repositories.MembresiaRepository;
+import com.caa.api.repositories.OrganizacionRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -72,6 +77,8 @@ class CartillaPrincipalUnicaIntegrationTest {
     @Autowired private PacienteRepository pacienteRepository;
     @Autowired private PacienteFamiliarRepository pacienteFamiliarRepository;
     @Autowired private UsuarioRepository usuarioRepository;
+    @Autowired private OrganizacionRepository organizacionRepository;
+    @Autowired private MembresiaRepository membresiaRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private JdbcTemplate jdbc;
 
@@ -89,10 +96,10 @@ class CartillaPrincipalUnicaIntegrationTest {
                 + "GENERATED ALWAYS AS (CASE WHEN es_principal THEN paciente_id END)");
         jdbc.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + INDICE_EMULADO + " ON cartillas(principal_key)");
 
-        terapeuta = crearUsuario("terapeuta@test.com", RolUsuario.TERAPEUTA);
-        otroTerapeuta = crearUsuario("otro@test.com", RolUsuario.TERAPEUTA);
-        familiarEdicion = crearUsuario("edicion@test.com", RolUsuario.FAMILIAR);
-        familiarLectura = crearUsuario("lectura@test.com", RolUsuario.FAMILIAR);
+        terapeuta = crearUsuario("terapeuta@test.com");
+        otroTerapeuta = crearUsuario("otro@test.com");
+        familiarEdicion = crearUsuario("edicion@test.com");
+        familiarLectura = crearUsuario("lectura@test.com");
 
         paciente = crearPaciente(terapeuta, "Nico");
         otroPaciente = crearPaciente(terapeuta, "Ana");
@@ -108,6 +115,8 @@ class CartillaPrincipalUnicaIntegrationTest {
         cartillaRepository.deleteAll();
         pacienteFamiliarRepository.deleteAll();
         pacienteRepository.deleteAll();
+        membresiaRepository.deleteAll();
+        organizacionRepository.deleteAll();
         usuarioRepository.deleteAll();
     }
 
@@ -237,7 +246,7 @@ class CartillaPrincipalUnicaIntegrationTest {
 
         assertThatThrownBy(() -> crear(familiarEdicion, paciente, "F", true))
                 .isInstanceOf(AccesoDenegadoException.class)
-                .hasMessageContaining("Solo el terapeuta responsable");
+                .hasMessageContaining("Solo un miembro del equipo");
 
         assertThat(principalesDe(paciente)).containsExactly(principal.id());
         assertThat(cartillaRepository.findByPacienteId(paciente.getId())).hasSize(1);
@@ -511,18 +520,31 @@ class CartillaPrincipalUnicaIntegrationTest {
         return seccion.substring(desde, hasta);
     }
 
-    private Usuario crearUsuario(String email, RolUsuario rol) {
+    private Usuario crearUsuario(String email) {
         return usuarioRepository.save(Usuario.builder()
                 .email(email)
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre(email)
-                .rol(rol)
                 .build());
     }
 
+    /**
+     * Crea el paciente dentro de una organización nueva cuyo {@code duenio} es OWNER y terapeuta.
+     */
     private Paciente crearPaciente(Usuario duenio, String nombre) {
+        Organizacion organizacion = organizacionRepository.save(Organizacion.builder()
+                .nombre(nombre + " Org")
+                .creadoPor(duenio)
+                .build());
+        membresiaRepository.save(Membresia.builder()
+                .id(new MembresiaId(organizacion.getId(), duenio.getId()))
+                .organizacion(organizacion)
+                .usuario(duenio)
+                .rolGestion(RolGestion.OWNER)
+                .esTerapeuta(true)
+                .build());
         return pacienteRepository.save(Paciente.builder()
-                .terapeuta(duenio)
+                .organizacion(organizacion)
                 .nombre(nombre)
                 .apellido("Perez")
                 .fechaNacimiento(LocalDate.of(2015, 5, 10))

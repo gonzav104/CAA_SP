@@ -9,15 +9,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PictogramaGlobal;
-import com.caa.api.models.RolUsuario;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
+import com.caa.api.repositories.MembresiaRepository;
+import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
+import com.caa.api.repositories.PacienteTerapeutaRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
 import java.util.List;
@@ -34,6 +40,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+/**
+ * GET anidado autorizado mediante {@code AccesoService.exigirCapacidad(LEER)}. El acceso al
+ * paciente deriva de sus relaciones multi-tenant.
+ */
 @SpringBootTest
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:caatestcd;DB_CLOSE_DELAY=-1",
@@ -62,6 +72,15 @@ class CartillaDetalleIntegrationTest {
     private PacienteRepository pacienteRepository;
 
     @MockitoBean
+    private MembresiaRepository membresiaRepository;
+
+    @MockitoBean
+    private PacienteTerapeutaRepository pacienteTerapeutaRepository;
+
+    @MockitoBean
+    private PacienteFamiliarRepository pacienteFamiliarRepository;
+
+    @MockitoBean
     private CartillaRepository cartillaRepository;
 
     @MockitoBean
@@ -73,7 +92,9 @@ class CartillaDetalleIntegrationTest {
     private MockMvc mockMvc;
     private String tokenValido;
     private UUID pacienteId;
+    private UUID organizacionId;
     private UUID cartillaId;
+    private Organizacion organizacion;
     private Paciente paciente;
     private Usuario terapeuta;
     private Cartilla cartilla;
@@ -88,18 +109,21 @@ class CartillaDetalleIntegrationTest {
                 .build();
 
         pacienteId = UUID.randomUUID();
+        organizacionId = UUID.randomUUID();
         cartillaId = UUID.randomUUID();
 
         terapeuta = Usuario.builder()
                 .id(UUID.randomUUID())
                 .email("terapeuta@test.com")
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build();
+
+        organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
 
         paciente = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
+                .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")
                 .build();
@@ -129,8 +153,18 @@ class CartillaDetalleIntegrationTest {
 
         tokenValido = jwtService.generarToken(terapeuta);
         given(usuarioRepository.findByEmail("terapeuta@test.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
-                .willReturn(Optional.of(paciente));
+        given(pacienteRepository.findById(pacienteId)).willReturn(Optional.of(paciente));
+
+        // terapeuta = OWNER de la organización del paciente → acceso de equipo (LEER).
+        Membresia ownerMembresia = Membresia.builder()
+                .id(new MembresiaId(organizacionId, terapeuta.getId()))
+                .organizacion(organizacion)
+                .usuario(terapeuta)
+                .rolGestion(RolGestion.OWNER)
+                .esTerapeuta(true)
+                .build();
+        given(membresiaRepository.findById(new MembresiaId(organizacionId, terapeuta.getId())))
+                .willReturn(Optional.of(ownerMembresia));
     }
 
     @Test

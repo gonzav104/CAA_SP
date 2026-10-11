@@ -8,18 +8,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
+import com.caa.api.models.PacienteTerapeuta;
+import com.caa.api.models.PacienteTerapeutaId;
 import com.caa.api.models.ParadigmaCartilla;
 import com.caa.api.models.PermisoColaborador;
-import com.caa.api.models.RolUsuario;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
+import com.caa.api.repositories.MembresiaRepository;
+import com.caa.api.repositories.OrganizacionRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
+import com.caa.api.repositories.PacienteTerapeutaRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -95,6 +103,15 @@ class QueryCountRegressionIntegrationTest {
     private PacienteFamiliarRepository pacienteFamiliarRepository;
 
     @Autowired
+    private OrganizacionRepository organizacionRepository;
+
+    @Autowired
+    private MembresiaRepository membresiaRepository;
+
+    @Autowired
+    private PacienteTerapeutaRepository pacienteTerapeutaRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     private MockMvc mockMvc;
@@ -128,8 +145,8 @@ class QueryCountRegressionIntegrationTest {
                 .apply(springSecurity())
                 .build();
 
-        terapeutaA = crearUsuario("terapeutaA@ejemplo.com", "Terapeuta A", RolUsuario.TERAPEUTA);
-        terapeutaB = crearUsuario("terapeutaB@ejemplo.com", "Terapeuta B", RolUsuario.TERAPEUTA);
+        terapeutaA = crearUsuario("terapeutaA@ejemplo.com", "Terapeuta A");
+        terapeutaB = crearUsuario("terapeutaB@ejemplo.com", "Terapeuta B");
 
         pacienteA = crearPaciente(terapeutaA, "Nico", "Perez");
         pacienteB = crearPaciente(terapeutaB, "Ana", "Gomez");
@@ -170,11 +187,11 @@ class QueryCountRegressionIntegrationTest {
         itemIdsAjena = new HashSet<>(java.util.List.of(itemAjeno.getId()));
 
         // familiarUno: vinculado solo a pacienteA (LECTURA); pacienteB existe y NO está vinculado.
-        familiarUno = crearUsuario("familiaruno@ejemplo.com", "Familiar Uno", RolUsuario.FAMILIAR);
+        familiarUno = crearUsuario("familiaruno@ejemplo.com", "Familiar Uno");
         vinculoUno = vincular(pacienteA, familiarUno, PermisoColaborador.LECTURA);
 
         // familiarMuchos: vinculado a 5 pacientes distintos con permisos mixtos.
-        familiarMuchos = crearUsuario("familiarmuchos@ejemplo.com", "Familiar Muchos", RolUsuario.FAMILIAR);
+        familiarMuchos = crearUsuario("familiarmuchos@ejemplo.com", "Familiar Muchos");
         for (int p = 0; p < 5; p++) {
             Paciente paciente = crearPaciente(terapeutaA, "PacienteMuchos" + p, "Apellido" + p);
             PermisoColaborador permiso = (p % 2 == 0) ? PermisoColaborador.LECTURA : PermisoColaborador.EDICION_LIMITADA;
@@ -191,8 +208,11 @@ class QueryCountRegressionIntegrationTest {
         itemCartillaRepository.deleteAll();
         categoriaRepository.deleteAll();
         cartillaRepository.deleteAll();
+        pacienteTerapeutaRepository.deleteAll();
         pacienteFamiliarRepository.deleteAll();
         pacienteRepository.deleteAll();
+        membresiaRepository.deleteAll();
+        organizacionRepository.deleteAll();
         usuarioRepository.deleteAll();
     }
 
@@ -320,6 +340,75 @@ class QueryCountRegressionIntegrationTest {
     }
 
     // ──────────────────────────────────────────────
+    //  Unión de pacientes multi-tenant (GET /api/pacientes, tarea 3.7b)
+    //  K organizaciones (mezclando membresías de gestión y clínicas) / P pacientes /
+    //  A asignaciones PacienteTerapeuta — design-part2 §14 item 3.
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Unión multi-tenant: conteo de queries constante independiente de K orgs / P pacientes / A asignaciones")
+    void misPacientes_union_conteoConstante() throws Exception {
+        Usuario usuarioChico = crearUsuario("chico@ejemplo.com", "Chico");
+        Organizacion orgGestionChica = crearOrganizacion(usuarioChico, "OrgGestionChica");
+        crearMembresia(orgGestionChica, usuarioChico, RolGestion.OWNER, false);
+        crearPacienteEnOrganizacion(orgGestionChica, "PacGestionChico", "Apellido");
+
+        Organizacion orgClinicaChica = crearOrganizacion(usuarioChico, "OrgClinicaChica");
+        crearMembresia(orgClinicaChica, usuarioChico, RolGestion.MIEMBRO, true);
+        Paciente pacAsignadoChico = crearPacienteEnOrganizacion(orgClinicaChica, "PacClinicoChico", "Apellido");
+        crearAsignacion(pacAsignadoChico, usuarioChico, orgClinicaChica.getId());
+
+        Usuario usuarioGrande = crearUsuario("grande@ejemplo.com", "Grande");
+        for (int k = 0; k < 5; k++) {
+            Organizacion orgGestion = crearOrganizacion(usuarioGrande, "OrgGestionGrande" + k);
+            crearMembresia(orgGestion, usuarioGrande, RolGestion.OWNER, false);
+            crearPacienteEnOrganizacion(orgGestion, "PacGestionGrande" + k, "Apellido");
+
+            Organizacion orgClinica = crearOrganizacion(usuarioGrande, "OrgClinicaGrande" + k);
+            crearMembresia(orgClinica, usuarioGrande, RolGestion.MIEMBRO, true);
+            Paciente pacAsignado = crearPacienteEnOrganizacion(orgClinica, "PacClinicoGrande" + k, "Apellido");
+            crearAsignacion(pacAsignado, usuarioGrande, orgClinica.getId());
+        }
+
+        long deltaChico = medirDeltaMisPacientesUnion(usuarioChico);
+        long deltaGrande = medirDeltaMisPacientesUnion(usuarioGrande);
+
+        assertThat(deltaChico).isEqualTo(deltaGrande);
+    }
+
+    // ──────────────────────────────────────────────
+    //  Workspace de organización (GET /api/organizaciones/{id}/pacientes, tarea 3.7b)
+    //  MIEMBRO con esTerapeuta=true: conteo constante independiente de P pacientes asignados.
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Workspace MIEMBRO+esTerapeuta: conteo de queries constante independiente de P pacientes asignados")
+    void workspaceOrganizacion_miembroClinico_conteoConstante() throws Exception {
+        Usuario owner = crearUsuario("ownerworkspace@ejemplo.com", "Owner");
+        Usuario miembroChico = crearUsuario("miembrochico@ejemplo.com", "MiembroChico");
+        Usuario miembroGrande = crearUsuario("miembrogrande@ejemplo.com", "MiembroGrande");
+
+        Organizacion orgChica = crearOrganizacion(owner, "WorkspaceChico");
+        crearMembresia(orgChica, owner, RolGestion.OWNER, true);
+        crearMembresia(orgChica, miembroChico, RolGestion.MIEMBRO, true);
+        Paciente pacChico1 = crearPacienteEnOrganizacion(orgChica, "WsPacChico1", "Apellido");
+        crearAsignacion(pacChico1, miembroChico, orgChica.getId());
+
+        Organizacion orgGrande = crearOrganizacion(owner, "WorkspaceGrande");
+        crearMembresia(orgGrande, owner, RolGestion.OWNER, true);
+        crearMembresia(orgGrande, miembroGrande, RolGestion.MIEMBRO, true);
+        for (int p = 0; p < 5; p++) {
+            Paciente pacGrande = crearPacienteEnOrganizacion(orgGrande, "WsPacGrande" + p, "Apellido");
+            crearAsignacion(pacGrande, miembroGrande, orgGrande.getId());
+        }
+
+        long deltaChico = medirDeltaWorkspace(orgChica, miembroChico);
+        long deltaGrande = medirDeltaWorkspace(orgGrande, miembroGrande);
+
+        assertThat(deltaChico).isEqualTo(deltaGrande);
+    }
+
+    // ──────────────────────────────────────────────
     //  Helpers de medición
     // ──────────────────────────────────────────────
 
@@ -358,6 +447,30 @@ class QueryCountRegressionIntegrationTest {
         return objectMapper.readTree(resultado.getResponse().getContentAsString());
     }
 
+    private long medirDeltaMisPacientesUnion(Usuario usuario) throws Exception {
+        Statistics stats = statistics();
+        stats.clear();
+        long before = stats.getPrepareStatementCount();
+
+        mockMvc.perform(get("/api/pacientes")
+                        .header("Authorization", "Bearer " + jwtService.generarToken(usuario)))
+                .andExpect(status().isOk());
+
+        return stats.getPrepareStatementCount() - before;
+    }
+
+    private long medirDeltaWorkspace(Organizacion organizacion, Usuario usuario) throws Exception {
+        Statistics stats = statistics();
+        stats.clear();
+        long before = stats.getPrepareStatementCount();
+
+        mockMvc.perform(get("/api/organizaciones/{organizacionId}/pacientes", organizacion.getId())
+                        .header("Authorization", "Bearer " + jwtService.generarToken(usuario)))
+                .andExpect(status().isOk());
+
+        return stats.getPrepareStatementCount() - before;
+    }
+
     private JsonNode obtenerMisPacientes(Usuario familiar) throws Exception {
         MvcResult resultado = mockMvc.perform(get("/api/pacientes")
                         .header("Authorization", "Bearer " + jwtService.generarToken(familiar)))
@@ -383,18 +496,22 @@ class QueryCountRegressionIntegrationTest {
     //  Helpers de fixtures
     // ──────────────────────────────────────────────
 
-    private Usuario crearUsuario(String email, String nombre, RolUsuario rol) {
+    private Usuario crearUsuario(String email, String nombre) {
         return usuarioRepository.save(Usuario.builder()
                 .email(email)
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre(nombre)
-                .rol(rol)
                 .build());
     }
 
+    /**
+     * Crea el paciente dentro de una organización nueva cuyo {@code terapeuta} es OWNER y terapeuta.
+     */
     private Paciente crearPaciente(Usuario terapeuta, String nombre, String apellido) {
+        Organizacion organizacion = crearOrganizacion(terapeuta, nombre + " Org");
+        crearMembresia(organizacion, terapeuta, RolGestion.OWNER, true);
         return pacienteRepository.save(Paciente.builder()
-                .terapeuta(terapeuta)
+                .organizacion(organizacion)
                 .nombre(nombre)
                 .apellido(apellido)
                 .fechaNacimiento(LocalDate.of(2015, 5, 10))
@@ -426,6 +543,41 @@ class QueryCountRegressionIntegrationTest {
                 .textoHablado(texto)
                 .textoVisible(texto)
                 .ordenVisual(ordenVisual)
+                .build());
+    }
+
+    private Organizacion crearOrganizacion(Usuario creador, String nombre) {
+        return organizacionRepository.save(Organizacion.builder()
+                .nombre(nombre)
+                .creadoPor(creador)
+                .build());
+    }
+
+    private Membresia crearMembresia(Organizacion organizacion, Usuario usuario, RolGestion rolGestion, boolean esTerapeuta) {
+        return membresiaRepository.save(Membresia.builder()
+                .id(new MembresiaId(organizacion.getId(), usuario.getId()))
+                .organizacion(organizacion)
+                .usuario(usuario)
+                .rolGestion(rolGestion)
+                .esTerapeuta(esTerapeuta)
+                .build());
+    }
+
+    private Paciente crearPacienteEnOrganizacion(Organizacion organizacion, String nombre, String apellido) {
+        return pacienteRepository.save(Paciente.builder()
+                .organizacion(organizacion)
+                .nombre(nombre)
+                .apellido(apellido)
+                .fechaNacimiento(LocalDate.of(2015, 5, 10))
+                .build());
+    }
+
+    private PacienteTerapeuta crearAsignacion(Paciente paciente, Usuario usuario, UUID organizacionId) {
+        return pacienteTerapeutaRepository.save(PacienteTerapeuta.builder()
+                .id(new PacienteTerapeutaId(paciente.getId(), usuario.getId()))
+                .paciente(paciente)
+                .usuario(usuario)
+                .organizacionId(organizacionId)
                 .build());
     }
 

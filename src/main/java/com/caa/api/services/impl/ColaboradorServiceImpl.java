@@ -3,70 +3,53 @@ package com.caa.api.services.impl;
 import com.caa.api.dtos.ColaboradorActualizacionDTO;
 import com.caa.api.dtos.ColaboradorRegistroDTO;
 import com.caa.api.dtos.ColaboradorResponseDTO;
-import com.caa.api.exceptions.ConflictoException;
+import com.caa.api.dtos.InvitacionResponseDTO;
 import com.caa.api.exceptions.RecursoNoEncontradoException;
-import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
-import com.caa.api.models.PacienteFamiliarId;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.PacienteFamiliarRepository;
-import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.AccesoService;
+import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.ColaboradorService;
-import com.caa.api.services.EmailService;
+import com.caa.api.services.InvitacionService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Gestión de colaboradores (familiares) de un paciente (spec {@code patient-collaborators}
+ * MODIFICADA; design-part2 §11.2, §13). Autorización vía {@code AccesoService.Capacidad.
+ * GESTION_CLINICA} (rolGestion OWNER/ADMIN de la organización del paciente, o miembro asignado
+ * con esTerapeuta=true). Agregar un colaborador ahora crea una invitación
+ * {@code PACIENTE_FAMILIAR}: el email destino no necesita tener cuenta todavía, y nada se
+ * concede hasta que la invitación se acepta (ver {@link InvitacionService}).
+ */
 @Service
 @RequiredArgsConstructor
 public class ColaboradorServiceImpl implements ColaboradorService {
 
     private final PacienteFamiliarRepository pacienteFamiliarRepository;
-    private final PacienteRepository pacienteRepository;
     private final UsuarioRepository usuarioRepository;
-    private final EmailService emailService;
+    private final AccesoService accesoService;
+    private final InvitacionService invitacionService;
 
     @Override
     @Transactional
-    public ColaboradorResponseDTO vincularColaborador(UUID pacienteId, ColaboradorRegistroDTO dto, String emailTerapeuta) {
-        Usuario terapeuta = terapeutaAutenticado(emailTerapeuta);
-        Paciente paciente = pacienteDelTerapeuta(pacienteId, terapeuta.getId());
-
-        // C1+C2: indistinguible entre "cuenta inexistente" y "rol ≠ FAMILIAR" (404 genérico)
-        Usuario familiar = usuarioRepository.findByEmail(dto.email())
-                .filter(u -> u.getRol() == RolUsuario.FAMILIAR)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
-
-        if (pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()).isPresent()) {
-            throw new ConflictoException(
-                    "No se puede vincular este usuario");
-        }
-
-        PacienteFamiliarId id = new PacienteFamiliarId(paciente.getId(), familiar.getId());
-        PacienteFamiliar vinculo = PacienteFamiliar.builder()
-                .id(id)
-                .paciente(paciente)
-                .usuario(familiar)
-                .permiso(dto.permiso())
-                .build();
-
-        PacienteFamiliar guardado = pacienteFamiliarRepository.saveAndFlush(vinculo);
-
-        // Efecto secundario: EmailServiceImpl nunca propaga excepciones.
-        emailService.enviarInvitacionColaborador(familiar, paciente, guardado.getPermiso());
-
-        return toResponseDTO(guardado);
+    public InvitacionResponseDTO vincularColaborador(UUID pacienteId, ColaboradorRegistroDTO dto,
+                                                       String emailTerapeuta) {
+        // La autorización (Capacidad.GESTION_CLINICA sobre el paciente) y la no-enumeración de
+        // cuentas ya existentes/pendientes viven en InvitacionServiceImpl.crearFamiliar.
+        return invitacionService.crearFamiliar(pacienteId, dto.email(), dto.permiso(), emailTerapeuta);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ColaboradorResponseDTO> obtenerColaboradores(UUID pacienteId, String emailTerapeuta) {
-        Usuario terapeuta = terapeutaAutenticado(emailTerapeuta);
-        pacienteDelTerapeuta(pacienteId, terapeuta.getId());
+        Usuario usuario = usuarioAutenticado(emailTerapeuta);
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         return pacienteFamiliarRepository.findByPaciente_Id(pacienteId).stream()
                 .map(this::toResponseDTO)
@@ -77,8 +60,8 @@ public class ColaboradorServiceImpl implements ColaboradorService {
     @Transactional
     public ColaboradorResponseDTO actualizarPermiso(UUID pacienteId, UUID usuarioId,
                                                     ColaboradorActualizacionDTO dto, String emailTerapeuta) {
-        Usuario terapeuta = terapeutaAutenticado(emailTerapeuta);
-        pacienteDelTerapeuta(pacienteId, terapeuta.getId());
+        Usuario usuario = usuarioAutenticado(emailTerapeuta);
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         PacienteFamiliar vinculo = pacienteFamiliarRepository
                 .findByPaciente_IdAndUsuario_Id(pacienteId, usuarioId)
@@ -92,8 +75,8 @@ public class ColaboradorServiceImpl implements ColaboradorService {
     @Override
     @Transactional
     public void revocarColaborador(UUID pacienteId, UUID usuarioId, String emailTerapeuta) {
-        Usuario terapeuta = terapeutaAutenticado(emailTerapeuta);
-        pacienteDelTerapeuta(pacienteId, terapeuta.getId());
+        Usuario usuario = usuarioAutenticado(emailTerapeuta);
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         PacienteFamiliar vinculo = pacienteFamiliarRepository
                 .findByPaciente_IdAndUsuario_Id(pacienteId, usuarioId)
@@ -103,18 +86,12 @@ public class ColaboradorServiceImpl implements ColaboradorService {
     }
 
     // ──────────────────────────────────────────────
-    //  Helpers de ownership
+    //  Helpers
     // ──────────────────────────────────────────────
 
-    private Usuario terapeutaAutenticado(String email) {
+    private Usuario usuarioAutenticado(String email) {
         return usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
-    }
-
-    private Paciente pacienteDelTerapeuta(UUID pacienteId, UUID terapeutaId) {
-        return pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId)
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "Paciente no encontrado o no tiene permisos"));
     }
 
     private ColaboradorResponseDTO toResponseDTO(PacienteFamiliar pf) {

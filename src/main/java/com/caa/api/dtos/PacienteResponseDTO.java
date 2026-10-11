@@ -12,28 +12,7 @@ public record PacienteResponseDTO(
         LocalDate fechaNacimiento,
         LocalDateTime creadoEn,
         PermisoColaborador miPermiso,
-        Integer gridSize
+        Integer gridSize,
+        UUID organizacionId
 ) {
-
-    // Constructores compatibles con los usos previos (lista, registro, actualización):
-    // en estos casos no se resuelve el permiso del usuario autenticado → miPermiso null
-    // y gridSize se completa explícitamente donde corresponda.
-    public PacienteResponseDTO(
-            UUID id,
-            String nombre,
-            String apellido,
-            LocalDate fechaNacimiento,
-            LocalDateTime creadoEn) {
-        this(id, nombre, apellido, fechaNacimiento, creadoEn, null, null);
-    }
-
-    public PacienteResponseDTO(
-            UUID id,
-            String nombre,
-            String apellido,
-            LocalDate fechaNacimiento,
-            LocalDateTime creadoEn,
-            PermisoColaborador miPermiso) {
-        this(id, nombre, apellido, fechaNacimiento, creadoEn, miPermiso, null);
-    }
 }

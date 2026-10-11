@@ -68,6 +68,28 @@
             <scope>test</scope>
         </dependency>
 
+        <!--
+            Testcontainers (PostgreSQL + JUnit 5): H2 no puede ejercitar índices únicos
+            parciales con WHERE, triggers de restricción diferidos (INITIALLY DEFERRED,
+            disparados solo en COMMIT) ni FKs compuestos — son comportamientos exclusivos
+            del motor PostgreSQL, sin equivalente en H2. Depender solo del rehearsal manual
+            (Fase 9, una sola vez) dejaría esos invariantes sin protección de regresión en
+            cuanto un cambio futuro los toque. Una suite automatizada contra un contenedor
+            PostgreSQL real es la única forma de mantenerlos bajo protección continua.
+            Versión gestionada por el BOM de spring-boot-dependencies 4.1.1 (testcontainers 2.0.5);
+            no se fija versión explícita a propósito.
+        -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Herramientas exclusivas para testear la seguridad -->
         <dependency>
             <groupId>org.springframework.security</groupId>

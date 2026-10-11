@@ -1,11 +1,12 @@
 package com.caa.api.config;
 
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteFamiliarId;
 import com.caa.api.models.PermisoColaborador;
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
+import com.caa.api.repositories.OrganizacionRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -44,6 +45,9 @@ class PacienteFamiliarPersistenceTest {
     private PacienteRepository pacienteRepository;
 
     @Autowired
+    private OrganizacionRepository organizacionRepository;
+
+    @Autowired
     private UsuarioRepository usuarioRepository;
 
     @Autowired
@@ -57,11 +61,16 @@ class PacienteFamiliarPersistenceTest {
                 .email("terapeuta@ejemplo.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
+                .build());
+
+        Organizacion organizacion = organizacionRepository.save(Organizacion.builder()
+                .nombre("Consultorio")
+                .creadoPor(terapeuta)
                 .build());
 
         Paciente paciente = pacienteRepository.save(Paciente.builder()
-                .terapeuta(terapeuta)
+                .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")
                 .fechaNacimiento(LocalDate.of(2015, 5, 10))
@@ -71,7 +80,7 @@ class PacienteFamiliarPersistenceTest {
                 .email("familiar@ejemplo.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Mama de Nico")
-                .rol(RolUsuario.FAMILIAR)
+
                 .build());
 
         // Persistir el vínculo paciente-familiar con enum

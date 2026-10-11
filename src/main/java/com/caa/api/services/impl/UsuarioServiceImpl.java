@@ -26,11 +26,11 @@ public class UsuarioServiceImpl implements UsuarioService {
             throw new ConflictoException("El email ya está registrado");
         }
 
+        // Identity only: the workspace is created or joined separately.
         Usuario usuario = Usuario.builder()
                 .email(dto.email())
                 .passwordHash(passwordEncoder.encode(dto.password()))
                 .nombre(dto.nombre())
-                .rol(dto.rol())
                 .build();
 
         Usuario usuarioGuardado = usuarioRepository.save(usuario);
@@ -42,7 +42,6 @@ public class UsuarioServiceImpl implements UsuarioService {
                 usuarioGuardado.getId(),
                 usuarioGuardado.getEmail(),
                 usuarioGuardado.getNombre(),
-                usuarioGuardado.getRol(),
                 usuarioGuardado.getCreadoEn()
         );
     }
@@ -58,7 +57,6 @@ public class UsuarioServiceImpl implements UsuarioService {
                 usuario.getId(),
                 usuario.getEmail(),
                 usuario.getNombre(),
-                usuario.getRol(),
                 usuario.getCreadoEn()
         );
     }

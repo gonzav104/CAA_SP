@@ -1,6 +1,5 @@
 package com.caa.api.config;
 
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.EmailService;
@@ -93,7 +92,7 @@ class RateLimitIntegrationTest {
                 .email(email)
                 .passwordHash(passwordEncoder.encode("Segura123!"))
                 .nombre("Rate Limit Test")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build());
     }
 

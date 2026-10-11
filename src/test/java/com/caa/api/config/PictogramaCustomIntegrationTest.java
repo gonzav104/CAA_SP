@@ -6,11 +6,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
 import com.caa.api.models.PictogramaCustom;
-import com.caa.api.models.RolUsuario;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
+import com.caa.api.repositories.MembresiaRepository;
+import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
+import com.caa.api.repositories.PacienteTerapeutaRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.CloudinaryService;
@@ -30,6 +36,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+/**
+ * {@code crearPictograma} autorizado mediante
+ * {@code AccesoService.exigirCapacidad(EDITAR_CONTENIDO)}. El acceso al paciente deriva de sus
+ * relaciones multi-tenant.
+ */
 @SpringBootTest
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:h2:mem:caatestpic;DB_CLOSE_DELAY=-1",
@@ -64,6 +75,15 @@ class PictogramaCustomIntegrationTest {
     private PacienteRepository pacienteRepository;
 
     @MockitoBean
+    private MembresiaRepository membresiaRepository;
+
+    @MockitoBean
+    private PacienteTerapeutaRepository pacienteTerapeutaRepository;
+
+    @MockitoBean
+    private PacienteFamiliarRepository pacienteFamiliarRepository;
+
+    @MockitoBean
     private PictogramaCustomRepository pictogramaCustomRepository;
 
     @MockitoBean
@@ -72,6 +92,8 @@ class PictogramaCustomIntegrationTest {
     private MockMvc mockMvc;
     private String tokenValido;
     private UUID pacienteId;
+    private UUID organizacionId;
+    private Organizacion organizacion;
     private Paciente paciente;
 
     @BeforeEach
@@ -82,18 +104,21 @@ class PictogramaCustomIntegrationTest {
                 .build();
 
         pacienteId = UUID.randomUUID();
+        organizacionId = UUID.randomUUID();
 
         Usuario terapeuta = Usuario.builder()
                 .id(UUID.randomUUID())
                 .email("terapeuta@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build();
+
+        organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
 
         paciente = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
+                .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")
                 .build();
@@ -101,7 +126,17 @@ class PictogramaCustomIntegrationTest {
         tokenValido = jwtService.generarToken(terapeuta);
         given(usuarioRepository.findByEmail("terapeuta@test.com")).willReturn(Optional.of(terapeuta));
         given(pacienteRepository.findById(pacienteId)).willReturn(Optional.of(paciente));
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId())).willReturn(Optional.of(paciente));
+
+        // terapeuta = OWNER de la organización del paciente → acceso de equipo (EDITAR_CONTENIDO).
+        Membresia ownerMembresia = Membresia.builder()
+                .id(new MembresiaId(organizacionId, terapeuta.getId()))
+                .organizacion(organizacion)
+                .usuario(terapeuta)
+                .rolGestion(RolGestion.OWNER)
+                .esTerapeuta(true)
+                .build();
+        given(membresiaRepository.findById(new MembresiaId(organizacionId, terapeuta.getId())))
+                .willReturn(Optional.of(ownerMembresia));
         given(cloudinaryService.subirImagen(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(pacienteId)))
                 .willReturn(URL_IMAGEN);
     }

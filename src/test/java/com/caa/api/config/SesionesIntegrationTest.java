@@ -12,11 +12,20 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
-import com.caa.api.models.RolUsuario;
+import com.caa.api.models.PacienteFamiliar;
+import com.caa.api.models.PacienteFamiliarId;
+import com.caa.api.models.PermisoColaborador;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Sesion;
 import com.caa.api.models.Usuario;
+import com.caa.api.repositories.MembresiaRepository;
+import com.caa.api.repositories.PacienteFamiliarRepository;
 import com.caa.api.repositories.PacienteRepository;
+import com.caa.api.repositories.PacienteTerapeutaRepository;
 import com.caa.api.repositories.SesionRepository;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
@@ -38,8 +47,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 /**
- * Sesiones = recurso clínico del TERAPEUTA. Ni siquiera un familiar vinculado las ve
- * (a diferencia de cartillas, donde el familiar SÍ lee). Lock del escenario 8 de la spec.
+ * Sesiones = recurso clínico resuelto vía {@code AccesoService.exigirCapacidad(GESTION_CLINICA)}
+ * (tarea 3.6, design-part2 §11.2). Ni siquiera un familiar vinculado las ve (a diferencia de
+ * cartillas, donde el familiar SÍ lee): GESTION_CLINICA exige {@code esEquipo()}, que nunca es
+ * verdadero para un acceso puramente familiar. Lock del escenario 8 de la spec, preservado.
  */
 @SpringBootTest
 @TestPropertySource(properties = {
@@ -53,7 +64,7 @@ import org.springframework.web.context.WebApplicationContext;
         "cloudinary.api-secret=test-api-secret",
         "resend.api-key=test-resend-api-key"
 })
-@DisplayName("Sesiones — recurso clínico terapeuta-only")
+@DisplayName("Sesiones — recurso clínico vía AccesoService.GESTION_CLINICA")
 class SesionesIntegrationTest {
 
     @Autowired
@@ -72,12 +83,23 @@ class SesionesIntegrationTest {
     private PacienteRepository pacienteRepository;
 
     @MockitoBean
+    private MembresiaRepository membresiaRepository;
+
+    @MockitoBean
+    private PacienteTerapeutaRepository pacienteTerapeutaRepository;
+
+    @MockitoBean
+    private PacienteFamiliarRepository pacienteFamiliarRepository;
+
+    @MockitoBean
     private SesionRepository sesionRepository;
 
     private MockMvc mockMvc;
     private UUID pacienteId;
+    private UUID organizacionId;
     private Usuario terapeuta;
     private Usuario familiar;
+    private Organizacion organizacion;
     private Paciente paciente;
     private String tokenTerapeuta;
     private String tokenFamiliar;
@@ -90,23 +112,23 @@ class SesionesIntegrationTest {
                 .build();
 
         pacienteId = UUID.randomUUID();
+        organizacionId = UUID.randomUUID();
         terapeuta = Usuario.builder()
                 .id(UUID.randomUUID())
                 .email("terapeuta@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
                 .build();
         familiar = Usuario.builder()
                 .id(UUID.randomUUID())
                 .email("familiar@test.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Familiar")
-                .rol(RolUsuario.FAMILIAR)
                 .build();
+        organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
         paciente = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
+                .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")
                 .build();
@@ -116,11 +138,27 @@ class SesionesIntegrationTest {
 
         given(usuarioRepository.findByEmail("terapeuta@test.com")).willReturn(Optional.of(terapeuta));
         given(usuarioRepository.findByEmail("familiar@test.com")).willReturn(Optional.of(familiar));
+        given(pacienteRepository.findById(pacienteId)).willReturn(Optional.of(paciente));
+
+        // terapeuta = OWNER de la organización del paciente → acceso de equipo (GESTION_CLINICA).
+        Membresia ownerMembresia = Membresia.builder()
+                .id(new MembresiaId(organizacionId, terapeuta.getId()))
+                .organizacion(organizacion)
+                .usuario(terapeuta)
+                .rolGestion(RolGestion.OWNER)
+                .esTerapeuta(true)
+                .build();
+        given(membresiaRepository.findById(new MembresiaId(organizacionId, terapeuta.getId())))
+                .willReturn(Optional.of(ownerMembresia));
+
+        // familiar NO es miembro de la organización del paciente.
+        given(membresiaRepository.findById(new MembresiaId(organizacionId, familiar.getId())))
+                .willReturn(Optional.empty());
     }
 
     @Test
-    @DisplayName("GET sesiones: terapeuta propietario → 200 con lista")
-    void getSesiones_terapeutaPropietario_200() throws Exception {
+    @DisplayName("GET sesiones: OWNER de la organización → 200 con lista")
+    void getSesiones_equipoDeGestion_200() throws Exception {
         Sesion s1 = Sesion.builder()
                 .id(UUID.randomUUID())
                 .paciente(paciente)
@@ -130,8 +168,6 @@ class SesionesIntegrationTest {
                 .estrategiasYProximosPasos("Sigue")
                 .build();
 
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
-                .willReturn(Optional.of(paciente));
         given(sesionRepository.findByPacienteId(pacienteId)).willReturn(List.of(s1));
 
         mockMvc.perform(get("/api/pacientes/{pacienteId}/sesiones", pacienteId)
@@ -142,12 +178,9 @@ class SesionesIntegrationTest {
     }
 
     @Test
-    @DisplayName("GET sesiones: familiar (incluso vinculado) → 404, las sesiones NO se comparten")
-    void getSesiones_familiar_404() throws Exception {
-        // El service ahora valida contra findByIdAndTerapeutaId: el familiar nunca es
-        // terapeuta, así que el look-up queda vacío → 404 genérico. El vínculo vía
-        // PacienteFamiliar es IRRELEVANTE para sesiones (a diferencia de cartillas).
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+    @DisplayName("GET sesiones: familiar SIN vínculo → 404, las sesiones NO se comparten")
+    void getSesiones_familiarSinVinculo_404() throws Exception {
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()))
                 .willReturn(Optional.empty());
 
         mockMvc.perform(get("/api/pacientes/{pacienteId}/sesiones", pacienteId)
@@ -158,8 +191,28 @@ class SesionesIntegrationTest {
     }
 
     @Test
-    @DisplayName("POST sesión: terapeuta propietario → 201")
-    void postSesion_terapeutaPropietario_201() throws Exception {
+    @DisplayName("GET sesiones: familiar CON vínculo (cualquier permiso) → igual 404, exclusión familiar sin cambios")
+    void getSesiones_familiarConVinculo_igual404() throws Exception {
+        // A diferencia de cartillas, un vínculo PacienteFamiliar válido NO otorga acceso a
+        // sesiones: GESTION_CLINICA exige esEquipo(), y un acceso familiar nunca lo satisface.
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()))
+                .willReturn(Optional.of(PacienteFamiliar.builder()
+                        .id(new PacienteFamiliarId(pacienteId, familiar.getId()))
+                        .paciente(paciente)
+                        .usuario(familiar)
+                        .permiso(PermisoColaborador.EDICION_LIMITADA)
+                        .build()));
+
+        mockMvc.perform(get("/api/pacientes/{pacienteId}/sesiones", pacienteId)
+                        .header("Authorization", "Bearer " + tokenFamiliar))
+                .andExpect(status().isNotFound());
+
+        verify(sesionRepository, never()).findByPacienteId(any());
+    }
+
+    @Test
+    @DisplayName("POST sesión: OWNER de la organización → 201")
+    void postSesion_equipoDeGestion_201() throws Exception {
         String body = """
                 {
                   "fechaHora": "2026-09-02T09:00:00",
@@ -180,8 +233,6 @@ class SesionesIntegrationTest {
                 .estrategiasYProximosPasos("Continuar con verbos")
                 .build();
 
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
-                .willReturn(Optional.of(paciente));
         given(sesionRepository.save(any(Sesion.class))).willReturn(guardada);
 
         mockMvc.perform(post("/api/pacientes/{pacienteId}/sesiones", pacienteId)
@@ -194,7 +245,7 @@ class SesionesIntegrationTest {
     }
 
     @Test
-    @DisplayName("POST sesión: familiar → 404 (terapeuta-only)")
+    @DisplayName("POST sesión: familiar → 404 (GESTION_CLINICA excluye familiares)")
     void postSesion_familiar_404() throws Exception {
         String body = """
                 {
@@ -203,7 +254,7 @@ class SesionesIntegrationTest {
                 }
                 """;
 
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()))
                 .willReturn(Optional.empty());
 
         mockMvc.perform(post("/api/pacientes/{pacienteId}/sesiones", pacienteId)
@@ -227,8 +278,8 @@ class SesionesIntegrationTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("GET sesión por id: terapeuta propietario → 200")
-    void getSesionPorId_terapeutaPropietario_200() throws Exception {
+    @DisplayName("GET sesión por id: OWNER de la organización → 200")
+    void getSesionPorId_equipoDeGestion_200() throws Exception {
         UUID sesionId = UUID.randomUUID();
         Sesion sesion = Sesion.builder()
                 .id(sesionId)
@@ -239,8 +290,6 @@ class SesionesIntegrationTest {
                 .estrategiasYProximosPasos("Sigue")
                 .build();
 
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
-                .willReturn(Optional.of(paciente));
         given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
                 .willReturn(Optional.of(sesion));
 
@@ -253,9 +302,9 @@ class SesionesIntegrationTest {
     }
 
     @Test
-    @DisplayName("GET sesión por id: familiar → 404, sin acceso (terapeuta-only)")
+    @DisplayName("GET sesión por id: familiar → 404, sin acceso de equipo")
     void getSesionPorId_familiar_404() throws Exception {
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()))
                 .willReturn(Optional.empty());
 
         mockMvc.perform(get("/api/pacientes/{pacienteId}/sesiones/{id}", pacienteId, UUID.randomUUID())
@@ -266,8 +315,8 @@ class SesionesIntegrationTest {
     }
 
     @Test
-    @DisplayName("PUT sesión: terapeuta propietario → 200 con datos actualizados")
-    void putSesion_terapeutaPropietario_200() throws Exception {
+    @DisplayName("PUT sesión: OWNER de la organización → 200 con datos actualizados")
+    void putSesion_equipoDeGestion_200() throws Exception {
         UUID sesionId = UUID.randomUUID();
         String body = """
                 {
@@ -295,8 +344,6 @@ class SesionesIntegrationTest {
                 .estrategiasYProximosPasos("Nueva estrategia")
                 .build();
 
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
-                .willReturn(Optional.of(paciente));
         given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
                 .willReturn(Optional.of(existente));
         given(sesionRepository.save(any(Sesion.class))).willReturn(actualizada);
@@ -312,7 +359,7 @@ class SesionesIntegrationTest {
     }
 
     @Test
-    @DisplayName("PUT sesión: familiar → 404, sin acceso (terapeuta-only)")
+    @DisplayName("PUT sesión: familiar → 404, sin acceso de equipo")
     void putSesion_familiar_404() throws Exception {
         String body = """
                 {
@@ -321,7 +368,7 @@ class SesionesIntegrationTest {
                 }
                 """;
 
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()))
                 .willReturn(Optional.empty());
 
         mockMvc.perform(put("/api/pacientes/{pacienteId}/sesiones/{id}", pacienteId, UUID.randomUUID())
@@ -335,8 +382,8 @@ class SesionesIntegrationTest {
     }
 
     @Test
-    @DisplayName("DELETE sesión: terapeuta propietario → 204")
-    void deleteSesion_terapeutaPropietario_204() throws Exception {
+    @DisplayName("DELETE sesión: OWNER de la organización → 204")
+    void deleteSesion_equipoDeGestion_204() throws Exception {
         UUID sesionId = UUID.randomUUID();
         Sesion sesion = Sesion.builder()
                 .id(sesionId)
@@ -345,8 +392,6 @@ class SesionesIntegrationTest {
                 .objetivosTrabajados("Objetivo A")
                 .build();
 
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeuta.getId()))
-                .willReturn(Optional.of(paciente));
         given(sesionRepository.findByIdAndPacienteId(sesionId, pacienteId))
                 .willReturn(Optional.of(sesion));
 
@@ -356,9 +401,9 @@ class SesionesIntegrationTest {
     }
 
     @Test
-    @DisplayName("DELETE sesión: familiar → 404, sin acceso (terapeuta-only)")
+    @DisplayName("DELETE sesión: familiar → 404, sin acceso de equipo")
     void deleteSesion_familiar_404() throws Exception {
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, familiar.getId()))
+        given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()))
                 .willReturn(Optional.empty());
 
         mockMvc.perform(delete("/api/pacientes/{pacienteId}/sesiones/{id}", pacienteId, UUID.randomUUID())

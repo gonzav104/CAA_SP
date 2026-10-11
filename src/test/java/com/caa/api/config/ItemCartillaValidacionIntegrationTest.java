@@ -1,6 +1,5 @@
 package com.caa.api.config;
 
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
@@ -73,7 +72,7 @@ class ItemCartillaValidacionIntegrationTest {
                 .email("integracion@ejemplo.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Integration Test")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .build();
 
         tokenValido = jwtService.generarToken(usuarioTest);

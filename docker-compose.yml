@@ -16,7 +16,7 @@ services:
       - "5444:5432"
     volumes:
       - db_data_final:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./bootstrap.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       # "$$" escapa la interpolacion de compose: el shell dentro del
       # contenedor expande las variables ya crudas (sin truncar).

@@ -3,6 +3,7 @@ package com.caa.api.controllers;
 import com.caa.api.dtos.ColaboradorActualizacionDTO;
 import com.caa.api.dtos.ColaboradorRegistroDTO;
 import com.caa.api.dtos.ColaboradorResponseDTO;
+import com.caa.api.dtos.InvitacionResponseDTO;
 import com.caa.api.services.ColaboradorService;
 import jakarta.validation.Valid;
 import java.security.Principal;
@@ -27,14 +28,19 @@ public class ColaboradorController {
 
     private final ColaboradorService colaboradorService;
 
+    /**
+     * Ahora crea una invitación familiar (202) en vez de vincular directamente (spec
+     * {@code patient-collaborators} MODIFICADA): el email destino no necesita tener cuenta
+     * todavía, y nada se concede hasta que la invitación se acepta.
+     */
     @PostMapping
-    public ResponseEntity<ColaboradorResponseDTO> vincularColaborador(
+    public ResponseEntity<InvitacionResponseDTO> vincularColaborador(
             @PathVariable UUID pacienteId,
             @Valid @RequestBody ColaboradorRegistroDTO dto,
             Principal principal) {
-        ColaboradorResponseDTO response = colaboradorService.vincularColaborador(
+        InvitacionResponseDTO response = colaboradorService.vincularColaborador(
                 pacienteId, dto, principal.getName());
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }
 
     @GetMapping

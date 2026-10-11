@@ -10,8 +10,9 @@ import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.AccesoService;
+import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.CategoriaService;
-import com.caa.api.services.PacienteService;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +26,7 @@ public class CategoriaServiceImpl implements CategoriaService {
     private final CategoriaRepository categoriaRepository;
     private final CartillaRepository cartillaRepository;
     private final UsuarioRepository usuarioRepository;
-    private final PacienteService pacienteService;
+    private final AccesoService accesoService;
 
     @Override
     @Transactional
@@ -34,9 +35,10 @@ public class CategoriaServiceImpl implements CategoriaService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Ownership por creador: solo quien creó la cartilla puede agregarle categorías
-        Cartilla cartilla = cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de creador_id (design-part2 §11.2)
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
+        Cartilla cartilla = cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         int orden = dto.orden() != null
                 ? dto.orden()
@@ -59,7 +61,7 @@ public class CategoriaServiceImpl implements CategoriaService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        pacienteService.pacienteLegibleParaUsuario(pacienteId, usuario);
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
 
         cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
@@ -76,9 +78,10 @@ public class CategoriaServiceImpl implements CategoriaService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Ownership por creador: solo quien creó la cartilla puede modificar sus categorías
-        cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de creador_id (design-part2 §11.2)
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
+        cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         Categoria categoria = categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));
@@ -99,9 +102,10 @@ public class CategoriaServiceImpl implements CategoriaService {
         Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
-        // Ownership por creador: solo quien creó la cartilla puede eliminar sus categorías
-        cartillaRepository.findByIdAndPacienteIdAndCreadorId(cartillaId, pacienteId, usuario.getId())
-                .orElseThrow(() -> new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+        // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de creador_id (design-part2 §11.2)
+        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
+        cartillaRepository.findByIdAndPacienteId(cartillaId, pacienteId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cartilla no encontrada o no tiene permisos"));
 
         Categoria categoria = categoriaRepository.findByIdAndCartillaId(categoriaId, cartillaId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Categoría no encontrada o no tiene permisos"));

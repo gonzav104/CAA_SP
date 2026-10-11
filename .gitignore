@@ -35,6 +35,9 @@ build/
 # Variables de entorno
 .env
 
+# Local database backups and private operational evidence
+/backups/
+
 # Archivos de contexto y configuración de IA
 *.md
 

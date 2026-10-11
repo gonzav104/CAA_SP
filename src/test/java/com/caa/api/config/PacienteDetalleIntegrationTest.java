@@ -6,11 +6,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
-import com.caa.api.models.RolUsuario;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.PacienteRepository;
 import com.caa.api.repositories.UsuarioRepository;
+import com.caa.api.services.AccesoService;
+import com.caa.api.services.AccesoService.AccesoPaciente;
+import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.JwtService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -54,12 +60,17 @@ class PacienteDetalleIntegrationTest {
     @MockitoBean
     private PacienteRepository pacienteRepository;
 
+    @MockitoBean
+    private AccesoService accesoService;
+
     private MockMvc mockMvc;
     private String tokenValido;
     private UUID pacienteId;
     private UUID terapeutaId;
+    private UUID organizacionId;
     private Usuario terapeuta;
     private Paciente paciente;
+    private Membresia membresiaOwner;
 
     @BeforeEach
     void setUp() {
@@ -70,17 +81,27 @@ class PacienteDetalleIntegrationTest {
 
         pacienteId = UUID.randomUUID();
         terapeutaId = UUID.randomUUID();
+        organizacionId = UUID.randomUUID();
 
         terapeuta = Usuario.builder()
                 .id(terapeutaId)
                 .email("terapeuta@test.com")
                 .nombre("Terapeuta")
-                .rol(RolUsuario.TERAPEUTA)
+
+                .build();
+
+        Organizacion organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
+        membresiaOwner = Membresia.builder()
+                .id(new MembresiaId(organizacionId, terapeutaId))
+                .organizacion(organizacion)
+                .usuario(terapeuta)
+                .rolGestion(RolGestion.OWNER)
+                .esTerapeuta(true)
                 .build();
 
         paciente = Paciente.builder()
                 .id(pacienteId)
-                .terapeuta(terapeuta)
+                .organizacion(organizacion)
                 .nombre("Nico")
                 .apellido("Perez")
                 .fechaNacimiento(LocalDate.of(2020, 5, 10))
@@ -89,12 +110,12 @@ class PacienteDetalleIntegrationTest {
 
         tokenValido = jwtService.generarToken(terapeuta);
         given(usuarioRepository.findByEmail("terapeuta@test.com")).willReturn(Optional.of(terapeuta));
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteId, terapeutaId))
-                .willReturn(Optional.of(paciente));
+        given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER))
+                .willReturn(new AccesoPaciente(paciente, membresiaOwner, false, null));
     }
 
     @Test
-    @DisplayName("GET /api/pacientes/{id} autenticado como terapeuta propietario → 200 con datos")
+    @DisplayName("GET /api/pacientes/{id} autenticado como miembro de equipo (gestión) → 200 con datos + organizacionId")
     void getPaciente_tokenValido_devuelve200() throws Exception {
         mockMvc.perform(get("/api/pacientes/{id}", pacienteId)
                         .header("Authorization", "Bearer " + tokenValido))
@@ -102,15 +123,17 @@ class PacienteDetalleIntegrationTest {
                 .andExpect(jsonPath("$.id").value(pacienteId.toString()))
                 .andExpect(jsonPath("$.nombre").value("Nico"))
                 .andExpect(jsonPath("$.apellido").value("Perez"))
-                .andExpect(jsonPath("$.fechaNacimiento").value("2020-05-10"));
+                .andExpect(jsonPath("$.fechaNacimiento").value("2020-05-10"))
+                .andExpect(jsonPath("$.organizacionId").value(organizacionId.toString()));
     }
 
     @Test
     @DisplayName("GET /api/pacientes/{id} autenticado pero paciente inexistente → 404")
     void getPaciente_pacienteInexistente_devuelve404() throws Exception {
         UUID pacienteInvalido = UUID.randomUUID();
-        given(pacienteRepository.findByIdAndTerapeutaId(pacienteInvalido, terapeutaId))
-                .willReturn(Optional.empty());
+        given(accesoService.exigirCapacidad(pacienteInvalido, terapeuta, Capacidad.LEER))
+                .willThrow(new com.caa.api.exceptions.RecursoNoEncontradoException(
+                        "Paciente no encontrado o no tiene permisos"));
 
         mockMvc.perform(get("/api/pacientes/{id}", pacienteInvalido)
                         .header("Authorization", "Bearer " + tokenValido))

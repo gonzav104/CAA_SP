@@ -1,6 +1,5 @@
 package com.caa.api.config;
 
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import java.time.LocalDateTime;
@@ -72,7 +71,7 @@ class CookieDefaultIntegrationTest {
                 .email("cookie-default@ejemplo.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Cookie Default")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .creadoEn(LocalDateTime.of(2026, 9, 1, 10, 0))
                 .build();
         given(usuarioRepository.findByEmail("cookie-default@ejemplo.com")).willReturn(Optional.of(usuario));

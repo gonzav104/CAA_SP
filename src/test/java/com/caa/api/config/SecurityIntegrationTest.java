@@ -1,6 +1,5 @@
 package com.caa.api.config;
 
-import com.caa.api.models.RolUsuario;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.JwtService;
@@ -85,7 +84,7 @@ class SecurityIntegrationTest {
                 .email("integration@ejemplo.com")
                 .passwordHash(passwordEncoder.encode("segura123"))
                 .nombre("Integration Test")
-                .rol(RolUsuario.TERAPEUTA)
+
                 .creadoEn(LocalDateTime.of(2026, 9, 1, 10, 0))
                 .build();
     }
@@ -157,13 +156,41 @@ class SecurityIntegrationTest {
         given(usuarioRepository.findByEmail("integration@ejemplo.com"))
                 .willReturn(Optional.of(usuarioTest));
 
-        // /api/pacientes no existe, pero el filtro de seguridad corre primero.
-        // Token válido → pasa el filtro → dispatcher devuelve 404/405, NO 401.
+        // GET /api/pacientes existe (union list, Fase 2) y el filtro de seguridad corre primero.
+        // Token válido → pasa el filtro → el endpoint responde 200 (lista vacía con este usuario
+        // sin membresías/vínculos reales en H2), nunca 401.
         mockMvc.perform(get("/api/pacientes")
                         .header("Authorization", "Bearer " + tokenValido)
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(result -> assertNotEquals(401, result.getResponse().getStatus(),
                         "Token válido no debería devolver 401"));
+    }
+
+    @Test
+    @DisplayName("Endpoint protegido con token de usuario con rol=null (registrado tras el cambio de "
+            + "contrato de registro) → NO devuelve 401 ni 500 (regresión NPE en JwtAuthenticationFilter)")
+    void endpointProtegido_usuarioConRolNull_noDevuelve401Ni500() throws Exception {
+        // Un usuario registrado por la UsuarioRegistroDTO actual (sin campo rol) nace con
+        // rol=null; ni JwtService.generarToken ni JwtAuthenticationFilter leen ese campo, así que
+        // ni la emisión del token ni la autenticación por request deben explotar.
+        Usuario usuarioSinRol = Usuario.builder()
+                .id(UUID.randomUUID())
+                .email("sin-rol@ejemplo.com")
+                .passwordHash(passwordEncoder.encode("segura123"))
+                .nombre("Sin Rol")
+                .creadoEn(LocalDateTime.of(2026, 10, 1, 10, 0))
+                .build();
+        String tokenValido = jwtService.generarToken(usuarioSinRol);
+        given(usuarioRepository.findByEmail("sin-rol@ejemplo.com"))
+                .willReturn(Optional.of(usuarioSinRol));
+
+        mockMvc.perform(get("/api/pacientes")
+                        .header("Authorization", "Bearer " + tokenValido)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(result -> assertNotEquals(401, result.getResponse().getStatus(),
+                        "Usuario con rol=null no debería ser rechazado por el filtro"))
+                .andExpect(result -> assertNotEquals(500, result.getResponse().getStatus(),
+                        "Usuario con rol=null no debería producir un error interno (NPE)"));
     }
 
     @Test
@@ -210,7 +237,7 @@ class SecurityIntegrationTest {
                 .andExpect(jsonPath("$.id").value(usuarioTest.getId().toString()))
                 .andExpect(jsonPath("$.email").value("integration@ejemplo.com"))
                 .andExpect(jsonPath("$.nombre").value("Integration Test"))
-                .andExpect(jsonPath("$.rol").value("TERAPEUTA"))
+                .andExpect(jsonPath("$.rol").doesNotExist())
                 .andExpect(jsonPath("$.creadoEn").exists());
     }
 
