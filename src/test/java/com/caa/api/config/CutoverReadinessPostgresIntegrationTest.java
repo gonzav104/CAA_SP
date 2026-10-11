@@ -2,9 +2,6 @@ package com.caa.api.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.caa.api.dtos.OrganizacionRegistroDTO;
-import com.caa.api.dtos.OrganizacionResponseDTO;
-import com.caa.api.services.OrganizacionService;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -15,10 +12,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -26,41 +19,24 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /**
  * Cutover readiness (design-part2 §15 stage 5/6, spec {@code multitenant-data-migration}
  * "Post-Migration Verification"): valida, sobre PostgreSQL real y un dataset representativo
- * con organizaciones y membresías creadas por servicios reales, más pacientes pre-016 sembrados
- * explícitamente con su columna legacy obligatoria, los invariantes de datos de los que depende la
+ * con organizaciones, membresías y pacientes pre-016 sembrados por JDBC
+ * según el esquema histórico, los invariantes de datos de los que depende la
  * MIGRACIÓN 016. Este test NO ejecuta ni rehearsa la MIGRACIÓN 016: solo lee el estado previo.
  * <p>
  * Reutilizable: puede volver a correrse en cualquier momento previo al cutover real, incluido
  * durante el rehearsal manual de la Fase 9 (design-part2 tasks-part3 §9.1), para re-confirmar los
  * mismos invariantes sobre datos frescos.
  * <p>
- * A diferencia del resto de {@code *PostgresIntegrationTest} (SQL crudo, sin contexto de Spring),
- * este test necesita {@code OrganizacionService} para producir membresías representativas. Los
- * pacientes se insertan por JDBC porque el esquema pre-016 todavía exige
- * {@code pacientes.terapeuta_id}, mientras que el modelo Java post-cutover ya no mapea esa columna.
+ * El fixture usa únicamente JDBC: el modelo Java actual requiere columnas de migraciones
+ * posteriores, pero este test debe conservar exactamente el esquema pre-016. El arranque del
+ * backend actual se verifica por separado sobre el esquema actual, no sobre este histórico.
  */
 @Testcontainers
-@SpringBootTest
 @DisplayName("Cutover readiness — invariantes de datos antes de MIGRACIÓN 016 (PostgreSQL real)")
 class CutoverReadinessPostgresIntegrationTest {
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine");
-
-    @DynamicPropertySource
-    static void propiedadesDatasource(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("spring.datasource.driver-class-name", POSTGRES::getDriverClassName);
-        registry.add("spring.jpa.hibernate.ddl-auto", () -> "none");
-        registry.add("jwt.secret", () -> "dGVzdC1zZWNyZXQta2V5LWZvci1qd3QtdGVzdHMtMTIzNDU2Nzg5MGFiY2RlZg==");
-        registry.add("jwt.expiration-ms", () -> "3600000");
-        registry.add("cloudinary.cloud-name", () -> "test-cloud");
-        registry.add("cloudinary.api-key", () -> "test-api-key");
-        registry.add("cloudinary.api-secret", () -> "test-api-secret");
-        registry.add("resend.api-key", () -> "test-resend-api-key");
-    }
 
     /** Aplica solo el bootstrap y las migraciones hasta 015a una sola vez; excluye 016. */
     @BeforeAll
@@ -73,9 +49,6 @@ class CutoverReadinessPostgresIntegrationTest {
         }
     }
 
-    @Autowired
-    private OrganizacionService organizacionService;
-
     @Test
     @DisplayName("Dataset representativo (OWNER clínico auto-asignado, OWNER de gestión sin "
             + "asignar, MIEMBRO asignado por invitación, terapeuta legacy sin pacientes) → cero "
@@ -85,22 +58,20 @@ class CutoverReadinessPostgresIntegrationTest {
         // design part 1 §10.3).
         String emailOwnerClinico = "owner-clinico@cutover.test";
         UUID ownerClinicoId = crearUsuarioLegacy(emailOwnerClinico, "TERAPEUTA");
-        OrganizacionResponseDTO orgClinica = organizacionService.crear(
-                new OrganizacionRegistroDTO("Consultorio Clínico", true), emailOwnerClinico);
+        UUID orgClinica = crearOrganizacionConOwner("Consultorio Clínico", ownerClinicoId, true);
         try (Connection conexion = abrirConexion()) {
             UUID pacienteId = insertarPacienteLegacy(
-                    conexion, orgClinica.id(), ownerClinicoId, "Paciente Asignado");
-            insertarPacienteTerapeuta(conexion, pacienteId, ownerClinicoId, orgClinica.id());
+                    conexion, orgClinica, ownerClinicoId, "Paciente Asignado");
+            insertarPacienteTerapeuta(conexion, pacienteId, ownerClinicoId, orgClinica);
         }
 
         // 2) OWNER con esTerapeuta=false: crea un paciente que queda SIN asignar — caso válido
         // por diseño (design-part2 Risk R11), NO debe ser reportado como violación por este check.
         String emailOwnerGestor = "owner-gestor@cutover.test";
         UUID ownerGestorId = crearUsuarioLegacy(emailOwnerGestor, "TERAPEUTA");
-        OrganizacionResponseDTO orgGestora = organizacionService.crear(
-                new OrganizacionRegistroDTO("Consultorio Gestor", false), emailOwnerGestor);
+        UUID orgGestora = crearOrganizacionConOwner("Consultorio Gestor", ownerGestorId, false);
         try (Connection conexion = abrirConexion()) {
-            insertarPacienteLegacy(conexion, orgGestora.id(), ownerGestorId, "Paciente Sin Asignar");
+            insertarPacienteLegacy(conexion, orgGestora, ownerGestorId, "Paciente Sin Asignar");
         }
 
         // 3) MIEMBRO (no OWNER/ADMIN) con esTerapeuta=true, sumado como si hubiera aceptado una
@@ -109,10 +80,10 @@ class CutoverReadinessPostgresIntegrationTest {
         String emailMiembroClinico = "miembro-clinico@cutover.test";
         UUID miembroId = crearUsuarioLegacy(emailMiembroClinico, "TERAPEUTA");
         try (Connection conexion = abrirConexion()) {
-            insertarMembresia(conexion, orgGestora.id(), miembroId, "MIEMBRO", true);
+            insertarMembresia(conexion, orgGestora, miembroId, "MIEMBRO", true);
             UUID pacienteId = insertarPacienteLegacy(
-                    conexion, orgGestora.id(), miembroId, "Paciente De Miembro");
-            insertarPacienteTerapeuta(conexion, pacienteId, miembroId, orgGestora.id());
+                    conexion, orgGestora, miembroId, "Paciente De Miembro");
+            insertarPacienteTerapeuta(conexion, pacienteId, miembroId, orgGestora);
         }
 
         // 4) Terapeuta legacy sin pacientes y sin organización — caso explícitamente excluido del
@@ -121,6 +92,15 @@ class CutoverReadinessPostgresIntegrationTest {
         crearUsuarioLegacy("terapeuta-sin-pacientes@cutover.test", "TERAPEUTA");
 
         try (Connection conexion = abrirConexion()) {
+            assertThat(contarEscalar(conexion, "SELECT count(*) FROM usuarios")).isEqualTo(4);
+            assertThat(contarEscalar(conexion, "SELECT count(*) FROM organizaciones")).isEqualTo(2);
+            assertThat(contarEscalar(conexion, "SELECT count(*) FROM membresias")).isEqualTo(3);
+            assertThat(contarEscalar(conexion, "SELECT count(*) FROM pacientes")).isEqualTo(3);
+            assertThat(contarEscalar(conexion, "SELECT count(*) FROM pacientes_terapeutas")).isEqualTo(2);
+            assertThat(contarEscalar(conexion, """
+                    SELECT count(*) FROM information_schema.columns WHERE table_schema='public'
+                    AND table_name='usuarios' AND column_name LIKE 'google_%'
+                    """)).as("historical schema has no Google identity fields").isZero();
             // Invariante A (spec multitenant-data-migration, "Guarded Four-Step Column Addition
             // for organizacion_id"): ningún paciente sin organizacion_id.
             assertThat(contarEscalar(conexion,
@@ -196,6 +176,28 @@ class CutoverReadinessPostgresIntegrationTest {
             resultSet.next();
             return (UUID) resultSet.getObject(1);
         }
+    }
+
+    /** Both rows commit together to preserve the deferred exactly-one-OWNER invariant. */
+    private UUID crearOrganizacionConOwner(String nombre, UUID ownerId, boolean esTerapeuta)
+            throws SQLException {
+        UUID organizacionId = UUID.randomUUID();
+        try (Connection conexion = abrirConexion()) {
+            conexion.setAutoCommit(false);
+            try (PreparedStatement statement = conexion.prepareStatement(
+                    "INSERT INTO organizaciones (id, nombre, creado_por_id) VALUES (?, ?, ?)")) {
+                statement.setObject(1, organizacionId);
+                statement.setString(2, nombre);
+                statement.setObject(3, ownerId);
+                statement.executeUpdate();
+                insertarMembresia(conexion, organizacionId, ownerId, "OWNER", esTerapeuta);
+                conexion.commit();
+            } catch (SQLException failure) {
+                conexion.rollback();
+                throw failure;
+            }
+        }
+        return organizacionId;
     }
 
     private void insertarMembresia(Connection conexion, UUID organizacionId, UUID usuarioId,

@@ -59,3 +59,11 @@ Engram mirror pending: authoritative runtime session identity is unavailable; no
 Migration 018 SHA-256 (from its marker through EOF): `410d556bb7881d16ad2f2efa5c481ee54b6e7a07907f854c52bb08e591018c05`.
 
 Next step: independent verifier runs final full suite once and final package/read-only audit. Active caa_db remains post-017; stop before any active migration.
+
+### WU3 historical fixture correction
+
+- WU2 commit: `5eae47f` (690 insertions, 15 deletions).
+- Independent final-suite RED: 588 tests, zero failures, one error. `CutoverReadinessPostgresIntegrationTest` booted the latest `Usuario` mapping while intentionally retaining the pre-016 schema, causing SQLSTATE 42703 for `google_recovery_email`.
+- Bounded correction: seed organizations and OWNER memberships together via JDBC instead of current application services; remove the now-unneeded Spring context. Preserve the historical pre-016 schema and every original readiness invariant. Explicit counts verify four users, two organizations, three memberships, three patients and two clinical assignments; no Google columns exist in the historical fixture.
+- Focused GREEN: `./mvnw -o test -Dtest=CutoverReadinessPostgresIntegrationTest` — one test, zero failures/errors/skips on disposable PostgreSQL 15. `git diff --check` passed.
+- No production or migration SQL changed; no active database access. Final independent suite verification remains pending with the parent verifier.
