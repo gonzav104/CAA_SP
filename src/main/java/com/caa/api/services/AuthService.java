@@ -212,7 +212,7 @@ public class AuthService {
             usuario.setResetTokenExpira(LocalDateTime.now().plusHours(1));
             usuarioRepository.save(usuario);
 
-            emailService.enviarRecuperacionPassword(usuario, token);
+            afterCommit(() -> emailService.enviarRecuperacionPassword(usuario, token));
         });
     }
 

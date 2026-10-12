@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -239,6 +242,43 @@ class GoogleRecoveryPostgresIntegrationTest {
         auth.solicitarRecuperacionGoogle("proof");
         assertThat(delivered).isEmpty();
         assertThatThrownBy(() -> complete("proof", token)).isInstanceOf(CredencialesInvalidasException.class);
+        assertThat(state(victim.getId())).isEqualTo(before);
+    }
+
+    @Test
+    void ordinaryRecoveryEmailIsDeliveredOnlyAfterCommitWithIndependentlyVisibleHash() {
+        doAnswer(call -> {
+            Usuario recipient = call.getArgument(0);
+            String rawToken = call.getArgument(1);
+            // A distinct physical connection cannot observe an uncommitted reset hash.
+            try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(),
+                    POSTGRES.getUsername(), POSTGRES.getPassword()); var statement = connection.prepareStatement(
+                    "SELECT reset_token FROM usuarios WHERE id=?")) {
+                statement.setObject(1, recipient.getId());
+                try (var row = statement.executeQuery()) {
+                    assertThat(row.next()).isTrue();
+                    assertThat(row.getString(1)).isEqualTo(hash(rawToken));
+                }
+            }
+            return null;
+        }).when(email).enviarRecuperacionPassword(any(), anyString());
+        new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
+            auth.olvidePassword(victim.getEmail());
+            verify(email, never()).enviarRecuperacionPassword(any(), anyString());
+        });
+        verify(email, times(1)).enviarRecuperacionPassword(any(), anyString());
+    }
+
+    @Test
+    void ordinaryRecoveryRollbackKeepsPreviousTokenAndSendsNoEmail() throws Exception {
+        installResetToken();
+        String before = state(victim.getId());
+        new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
+            auth.olvidePassword(victim.getEmail());
+            verify(email, never()).enviarRecuperacionPassword(any(), anyString());
+            transaction.setRollbackOnly();
+        });
+        verify(email, never()).enviarRecuperacionPassword(any(), anyString());
         assertThat(state(victim.getId())).isEqualTo(before);
     }
 

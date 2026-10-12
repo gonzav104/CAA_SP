@@ -83,3 +83,27 @@ Verified source boundary: `d29ac73`, including `db1b548` (stable Google binding 
 - Engram mirror remains pending because the runtime has no authoritative registered session identity.
 
 All implementation work units and independent verification are complete. Remaining deployment and integration boundaries are documented in `docs/google-identity-recovery.md`; no frontend recovery screen, live-provider test or Google email-transfer policy is claimed.
+
+### WU-P2 — defer ordinary password recovery email until commit
+
+- Scope: reuse the existing `afterCommit` helper for the ordinary forgot-password email only. No token logic, Google subject logic, migration, schema or active database changes.
+- Route: delegated direct; transaction-bound notification behavior requires real PostgreSQL evidence and a separate fix commit.
+- [x] Prove RED/GREEN for no delivery before commit, committed hash visibility from an independent connection, exactly one delivery after commit, and zero delivery on forced rollback.
+- [x] Run focused auth/reset/email/PostgreSQL tests, then independent final suite; commit this bounded fix separately only after final verification.
+- Allowed production change: `afterCommit(() -> emailService.enviarRecuperacionPassword(usuario, token))`.
+- Engram mirror remains pending unavailable authoritative runtime identity.
+
+
+WU-P2 observed evidence:
+- RED: the two new PostgreSQL transaction tests failed before the production change (two failures, zero errors). The email callback observed no committed hash through its independent physical connection, and the rollback path had already invoked email.
+- GREEN: `./mvnw -o test -Dtest=GoogleRecoveryPostgresIntegrationTest,AuthServiceTest,RecuperoPasswordIntegrationTest,EmailServiceTest` — 60 tests, zero failures/errors/skips. The PostgreSQL callback uses a separate `DriverManager` connection and compares the committed stored hash to the actual emitted raw token; no sleeps or shared connection stand in for visibility proof.
+- The affected H2 success test now explicitly commits its enclosing test transaction before checking email, and deletes its committed fixture afterward. Other H2 cases are unchanged.
+- Production diff is exactly the requested `afterCommit` wrapper; `init.sql` and `bootstrap.sql` are unchanged. `git diff --check` passed.
+- Temporary diagnostics: `/tmp/google-p2-red.log`, `/tmp/google-p2-targeted.log`. The writer did not run the full suite; final independent verification and delivery are recorded below.
+
+
+WU-P2 final independent receipt:
+- One completed final full suite passed: **590 tests, zero failures, zero errors, zero skipped**. Evidence reconciled from 70 fresh XML reports matching Surefire launcher `surefirebooter-20261012195805921_3.jar`; one stale report was excluded.
+- Diagnostic log: `/tmp/google-identity-p2-independent-full.log`. The results above are retained as durable evidence.
+- Independent scope check confirmed precisely four authorized files and one production line; migration and bootstrap SQL remain unchanged.
+- Delivered as a separate `fix(auth): send password recovery email after commit` commit containing the production wrapper, PostgreSQL proofs, bounded H2 fixture adaptation, and this receipt. No repeated tests, active database access, RDD or push.
