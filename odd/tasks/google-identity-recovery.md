@@ -20,7 +20,7 @@ Delivery: auto-chain / feature-branch-chain, local commits only. Forecast 900–
 
 - [x] WU1 — Explicit unique Google subject; refuse email-only authentication; additive 018 and bootstrap; unit/schema regression proof.
 - [x] WU2 — Email + Google recovery, locked atomic credential mutation, password/JWT invalidation and concurrency proof.
-- [ ] WU3 — Independent final suite/package/startup, runbook and rehearsal evidence; stop before active migration.
+- [x] WU3 — Independent final suite/package/startup, runbook and rehearsal evidence; stop before active migration.
 
 Targeted commands:
 - `./mvnw -o test -Dtest=GoogleTokenVerifierTest,AuthServiceTest,EmailServiceTest,RecuperoPasswordIntegrationTest,SecurityIntegrationTest`
@@ -58,7 +58,7 @@ Engram mirror pending: authoritative runtime session identity is unavailable; no
 
 Migration 018 SHA-256 (from its marker through EOF): `410d556bb7881d16ad2f2efa5c481ee54b6e7a07907f854c52bb08e591018c05`.
 
-Next step: independent verifier runs final full suite once and final package/read-only audit. Active caa_db remains post-017; stop before any active migration.
+Next step: stop before applying 018 to the active database. Implementation and isolated rehearsal are complete; active application requires separate authorization.
 
 ### WU3 historical fixture correction
 
@@ -66,4 +66,20 @@ Next step: independent verifier runs final full suite once and final package/rea
 - Independent final-suite RED: 588 tests, zero failures, one error. `CutoverReadinessPostgresIntegrationTest` booted the latest `Usuario` mapping while intentionally retaining the pre-016 schema, causing SQLSTATE 42703 for `google_recovery_email`.
 - Bounded correction: seed organizations and OWNER memberships together via JDBC instead of current application services; remove the now-unneeded Spring context. Preserve the historical pre-016 schema and every original readiness invariant. Explicit counts verify four users, two organizations, three memberships, three patients and two clinical assignments; no Google columns exist in the historical fixture.
 - Focused GREEN: `./mvnw -o test -Dtest=CutoverReadinessPostgresIntegrationTest` — one test, zero failures/errors/skips on disposable PostgreSQL 15. `git diff --check` passed.
-- No production or migration SQL changed; no active database access. Final independent suite verification remains pending with the parent verifier.
+- No production or migration SQL changed; no active database access. Final independent verification is recorded below.
+
+
+### WU3 final independent verification receipt
+
+Verified source boundary: `d29ac73`, including `db1b548` (stable Google binding and additive schema), `5eae47f` (atomic dual-proof recovery), and `d29ac73` (historical readiness fixture isolation).
+
+- Completed final command: `./mvnw -o test` — **588 tests, zero failures, zero errors, zero skipped**. Evidence was reconciled from 70 fresh XML reports matching Surefire launcher `surefirebooter20261012191933722_3.jar`; the stale removed `UsuarioRepositoryTest` report was excluded.
+- Final `./mvnw -o -DskipTests package` — **PASS**. This packages the verified source without repeating the test suite.
+- An earlier resumed attempt lost its process/log and contained partial Docker errors. It was not counted as a completed run or a PASS. One fresh final run completed successfully after resume.
+- Included PostgreSQL proofs: Google recovery 15 tests; additive migration 018 four tests; legacy cleanup/bootstrap parity ten tests; historical cutover/restore three tests; historical readiness one test. The current backend starts as a real Spring application against disposable post-018 PostgreSQL during rehearsal.
+- The first 40,056 bytes of historical `init.sql` remain identical. Migration 018 SHA-256 remains `410d556bb7881d16ad2f2efa5c481ee54b6e7a07907f854c52bb08e591018c05`.
+- Diagnostic logs: `/tmp/google-identity-independent-resumed-final-full.log` and `/tmp/google-identity-independent-resumed-package.log`. The durable results above do not depend on retaining temporary logs.
+- No active database was accessed or migrated; **018 is NOT applied to caa_db**. No RDD, push or production deployment occurred.
+- Engram mirror remains pending because the runtime has no authoritative registered session identity.
+
+All implementation work units and independent verification are complete. Remaining deployment and integration boundaries are documented in `docs/google-identity-recovery.md`; no frontend recovery screen, live-provider test or Google email-transfer policy is claimed.

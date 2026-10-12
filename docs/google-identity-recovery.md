@@ -53,6 +53,12 @@ The separate application tests exercise simultaneous token consumers, same-subje
 
 No active database is touched. A later production application requires separate authorization, a fresh restorable backup, a closed write window, exact instance identification and matching preconditions. Stop on differences. The additive fields may remain if application rollback is necessary; never restore email-only Google login after successful recoveries. Do not remove subjects/challenges or reset credential versions as a rollback shortcut.
 
+## Verified delivery status
+
+At source commit `d29ac73`, the independent final suite passed **588 tests with zero failures, errors or skips**, and the final offline package succeeded. PostgreSQL proofs cover migration replay/preservation, historical bootstrap parity, current-backend startup, recovery concurrency and historical readiness. The full recovery evidence is recorded in `odd/tasks/google-identity-recovery.md`.
+
+**Implementation and isolated rehearsal are complete; migration 018 has NOT been applied to the active database.** A separate approved deployment is still required.
+
 ## Remaining risks outside this objective
 
 - Historical email-only Google accounts must recover explicitly; transparent historical login is intentionally rejected.
