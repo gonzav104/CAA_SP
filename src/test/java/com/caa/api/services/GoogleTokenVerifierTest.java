@@ -52,6 +52,7 @@ class GoogleTokenVerifierTest {
     void emailVerifiedFalse_devuelveVacio() throws Exception {
         GoogleIdToken mockIdToken = mock(GoogleIdToken.class);
         GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
+        payload.setSubject("google-sub");
         payload.setEmail("test@ejemplo.com");
         payload.set("name", "Test User");
         payload.setEmailVerified(false);
@@ -69,6 +70,7 @@ class GoogleTokenVerifierTest {
     void emailVerifiedTrue_devuelveGoogleUsuario() throws Exception {
         GoogleIdToken mockIdToken = mock(GoogleIdToken.class);
         GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
+        payload.setSubject("google-sub");
         payload.setEmail("test@ejemplo.com");
         payload.set("name", "Test User");
         payload.setEmailVerified(true);
@@ -79,8 +81,22 @@ class GoogleTokenVerifierTest {
         Optional<GoogleUsuario> resultado = googleTokenVerifier.verificar("token-google");
 
         assertThat(resultado).isPresent();
+        assertThat(resultado.get().sub()).isEqualTo("google-sub");
         assertThat(resultado.get().email()).isEqualTo("test@ejemplo.com");
         assertThat(resultado.get().nombre()).isEqualTo("Test User");
+    }
+
+    @Test
+    void missingOrBlankSubjectIsRejected() throws Exception {
+        GoogleIdToken token = mock(GoogleIdToken.class);
+        GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
+        payload.setEmail("verified@example.test");
+        payload.setEmailVerified(true);
+        given(token.getPayload()).willReturn(payload);
+        given(mockVerifier.verify("proof")).willReturn(token);
+        assertThat(googleTokenVerifier.verificar("proof")).isEmpty();
+        payload.setSubject("  ");
+        assertThat(googleTokenVerifier.verificar("proof")).isEmpty();
     }
 
     @Test
@@ -88,6 +104,7 @@ class GoogleTokenVerifierTest {
     void emailVerifiedNull_devuelveVacio() throws Exception {
         GoogleIdToken mockIdToken = mock(GoogleIdToken.class);
         GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
+        payload.setSubject("google-sub");
         payload.setEmail("test@ejemplo.com");
         // emailVerified queda null por defecto
         given(mockIdToken.getPayload()).willReturn(payload);

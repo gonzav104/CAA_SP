@@ -45,6 +45,10 @@ public class GoogleTokenVerifier {
             }
 
             GoogleIdToken.Payload payload = token.getPayload();
+            String sub = payload.getSubject();
+            if (sub == null || sub.isBlank()) {
+                return Optional.empty();
+            }
             String email = payload.getEmail();
             if (email == null || email.isBlank()) {
                 return Optional.empty();
@@ -58,12 +62,12 @@ public class GoogleTokenVerifier {
             Object nombreObj = payload.get("name");
             String nombre = nombreObj != null ? nombreObj.toString() : email;
 
-            return Optional.of(new GoogleUsuario(email, nombre));
+            return Optional.of(new GoogleUsuario(sub, email, nombre));
         } catch (Exception e) {
             return Optional.empty();
         }
     }
 
-    public record GoogleUsuario(String email, String nombre) {
+    public record GoogleUsuario(String sub, String email, String nombre) {
     }
 }

@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -102,18 +103,29 @@ class RecuperoPasswordIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value(MENSAJE_EXITO_OLVIDE));
 
-        ArgumentCaptor<Usuario> usuarioCaptor = ArgumentCaptor.forClass(Usuario.class);
-        ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
-        verify(emailService).enviarRecuperacionPassword(usuarioCaptor.capture(), tokenCaptor.capture());
+        verify(emailService, never()).enviarRecuperacionPassword(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        try {
+            TestTransaction.flagForCommit();
+            TestTransaction.end();
+            ArgumentCaptor<Usuario> usuarioCaptor = ArgumentCaptor.forClass(Usuario.class);
+            ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
+            verify(emailService).enviarRecuperacionPassword(usuarioCaptor.capture(), tokenCaptor.capture());
 
-        String tokenEnviado = tokenCaptor.getValue();
-        assertThat(tokenEnviado).isNotBlank();
+            String tokenEnviado = tokenCaptor.getValue();
+            assertThat(tokenEnviado).isNotBlank();
 
-        // En BD se guarda SOLO el hash SHA-256 del token (el plano nunca se persiste)
-        Usuario persistido = usuarioRepository.findById(usuario.getId()).orElseThrow();
-        assertThat(persistido.getResetToken()).isEqualTo(hashSha256(tokenEnviado));
-        assertThat(persistido.getResetToken()).isNotEqualTo(tokenEnviado);
-        assertThat(persistido.getResetTokenExpira()).isAfter(LocalDateTime.now());
+            // En BD se guarda SOLO el hash SHA-256 del token (el plano nunca se persiste)
+            Usuario persistido = usuarioRepository.findById(usuario.getId()).orElseThrow();
+            assertThat(persistido.getResetToken()).isEqualTo(hashSha256(tokenEnviado));
+            assertThat(persistido.getResetToken()).isNotEqualTo(tokenEnviado);
+            assertThat(persistido.getResetTokenExpira()).isAfter(LocalDateTime.now());
+        } finally {
+            // This test commits its fixture to observe afterCommit; do not leak it to later tests.
+            if (!TestTransaction.isActive()) {
+                usuarioRepository.deleteById(usuario.getId());
+            }
+        }
     }
 
     @Test

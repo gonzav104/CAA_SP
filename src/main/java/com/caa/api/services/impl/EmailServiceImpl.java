@@ -39,6 +39,19 @@ public class EmailServiceImpl implements EmailService {
     }
 
     @Override
+    public void enviarRecuperacionGoogle(Usuario usuario, String token) {
+        String enlace = frontendUrl + "/recuperar-google?token=" + token;
+        String html = "<p>Hola <strong>" + HtmlUtils.htmlEscape(usuario.getNombre()) + "</strong>,</p>"
+                + "<p>Recibimos una solicitud para vincular tu identidad Google a esta cuenta.</p>"
+                + "<p>Para completar la recuperación, vuelve a autenticarte con Google y establece una contraseña nueva. "
+                + "Se invalidarán la contraseña anterior y todas las sesiones anteriores.</p>"
+                + "<p>Este enlace es válido por 1 hora:</p>"
+                + "<p><a href=\"" + HtmlUtils.htmlEscape(enlace) + "\">Recuperar acceso con Google</a></p>"
+                + "<p>Si no solicitaste este cambio, ignora este email.</p>";
+        enviar(usuario, "Recupera tu acceso con Google", html);
+    }
+
+    @Override
     public void enviarRecuperacionPassword(Usuario usuario, String token) {
         String enlace = frontendUrl + "/restablecer-password?token=" + token;
         String asunto = "Recupera tu contraseña";

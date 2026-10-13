@@ -3,6 +3,7 @@ package com.caa.api.services;
 import com.caa.api.dtos.AuthResponseDTO;
 import com.caa.api.dtos.GoogleAuthResponseDTO;
 import com.caa.api.dtos.GoogleCompletarRegistroDTO;
+import com.caa.api.dtos.GoogleRecuperacionCompletarDTO;
 import com.caa.api.dtos.LoginRequestDTO;
 import com.caa.api.dtos.RestablecerPasswordDTO;
 import com.caa.api.exceptions.CredencialesInvalidasException;
@@ -12,22 +13,26 @@ import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.GoogleTokenVerifier.GoogleUsuario;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
-    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+    private static final SecureRandom RECOVERY_RANDOM = new SecureRandom();
 
     /**
      * Mensaje único para token inexistente y token expirado: nunca revelar
@@ -58,66 +63,131 @@ public class AuthService {
         return new AuthResponseDTO(token, "Bearer");
     }
 
-    /**
-     * Login con Google: si el usuario ya existe, emite token (devuelto en el record).
-     * Si no, informa que la identidad todavía debe completar el registro
-     * ({@code requiereRol=true}, contrato conservado; sin token).
-     *
-     * @return pair (GoogleAuthResponseDTO, token|null)
-     */
+    /** Only an explicitly persisted Google subject can authenticate an existing identity. */
     public GoogleLoginResult loginConGoogle(String idToken) {
-        GoogleUsuario googleUsuario = googleTokenVerifier.verificar(idToken)
+        GoogleUsuario google = googleTokenVerifier.verificar(idToken)
                 .orElseThrow(CredencialesInvalidasException::new);
-
-        return usuarioRepository.findByEmail(googleUsuario.email())
-                .map(usuario -> {
-                    String token = jwtService.generarToken(usuario);
-                    return new GoogleLoginResult(
-                            new GoogleAuthResponseDTO(false, "Bearer", null, null),
-                            Optional.of(token));
-                })
-                .orElseGet(() -> new GoogleLoginResult(
-                        new GoogleAuthResponseDTO(true, null, googleUsuario.email(), googleUsuario.nombre()),
-                        Optional.empty()));
+        Optional<Usuario> linked = usuarioRepository.findByGoogleSub(google.sub());
+        if (linked.isPresent()) {
+            return authenticateGoogle(linked.get(), google);
+        }
+        rejectExistingEmail(google.email());
+        return new GoogleLoginResult(
+                new GoogleAuthResponseDTO(true, null, google.email(), google.nombre()), Optional.empty());
     }
 
-    /**
-     * Completar registro de un usuario nuevo de Google.
-     * Re-verifica el idToken (nunca confiar en el email que manda el cliente).
-     * Si el usuario ya fue creado (carrera/doble click), loguea sin duplicar.
-     *
-     * @return pair (GoogleAuthResponseDTO, token)
-     */
+    @Transactional
     public GoogleLoginResult completarRegistroGoogle(GoogleCompletarRegistroDTO dto) {
-        GoogleUsuario googleUsuario = googleTokenVerifier.verificar(dto.idToken())
+        GoogleUsuario google = googleTokenVerifier.verificar(dto.idToken())
                 .orElseThrow(CredencialesInvalidasException::new);
+        Optional<Usuario> linked = usuarioRepository.findByGoogleSub(google.sub());
+        if (linked.isPresent()) {
+            return authenticateGoogle(linked.get(), google);
+        }
+        rejectExistingEmail(google.email());
+        Usuario nuevo = Usuario.builder()
+                .email(google.email()).googleSub(google.sub()).nombre(google.nombre())
+                .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString())).build();
+        try {
+            // Flush UNIQUE email/subject races before emitting credentials; never fall back to email.
+            Usuario saved = usuarioRepository.saveAndFlush(nuevo);
+            afterCommit(() -> emailService.enviarBienvenida(saved));
+            return authenticateGoogle(saved, google);
+        } catch (DataIntegrityViolationException conflict) {
+            throw new CredencialesInvalidasException();
+        }
+    }
 
-        return usuarioRepository.findByEmail(googleUsuario.email())
-                .map(usuario -> {
-                    log.info("Usuario {} ya existía al completar registro Google — login directo",
-                            googleUsuario.email());
-                    String token = jwtService.generarToken(usuario);
-                    return new GoogleLoginResult(
-                            new GoogleAuthResponseDTO(false, "Bearer", null, null),
-                            Optional.of(token));
-                })
-                .orElseGet(() -> {
-                    // Identity only: organization access is established separately.
-                    Usuario nuevo = Usuario.builder()
-                            .email(googleUsuario.email())
-                            .nombre(googleUsuario.nombre())
-                            .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
-                            .build();
-                    Usuario guardado = usuarioRepository.save(nuevo);
+    private void rejectExistingEmail(String email) {
+        if (usuarioRepository.findByEmail(email).isPresent()) {
+            throw new CredencialesInvalidasException();
+        }
+    }
 
-                    // Efecto secundario: EmailServiceImpl nunca propaga excepciones.
-                    emailService.enviarBienvenida(guardado);
+    private GoogleLoginResult authenticateGoogle(Usuario usuario, GoogleUsuario google) {
+        if (!google.sub().equals(usuario.getGoogleSub()) || !google.email().equals(usuario.getEmail())) {
+            throw new CredencialesInvalidasException();
+        }
+        return new GoogleLoginResult(new GoogleAuthResponseDTO(false, "Bearer", null, null),
+                Optional.of(jwtService.generarToken(usuario)));
+    }
 
-                    String token = jwtService.generarToken(guardado);
-                    return new GoogleLoginResult(
-                            new GoogleAuthResponseDTO(false, "Bearer", null, null),
-                            Optional.of(token));
-                });
+    /** Email-only legacy matches receive a challenge, never a login or an implicit binding. */
+    @Transactional
+    public void solicitarRecuperacionGoogle(String idToken) {
+        GoogleUsuario google = googleTokenVerifier.verificar(idToken)
+                .orElseThrow(CredencialesInvalidasException::new);
+        rateLimitService.verificarYConsumir(RateLimitService.Operacion.OLVIDE_PASSWORD, google.email());
+        Optional<Usuario> candidate = usuarioRepository.findLockedByEmail(google.email());
+        if (candidate.isEmpty() || candidate.get().getGoogleSub() != null
+                || usuarioRepository.findByGoogleSub(google.sub()).isPresent()) {
+            return;
+        }
+        Usuario usuario = candidate.get();
+        byte[] random = new byte[32];
+        RECOVERY_RANDOM.nextBytes(random);
+        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
+        usuario.setGoogleRecoveryTokenHash(hashResetToken(token));
+        usuario.setGoogleRecoveryExpiresAt(LocalDateTime.now().plusHours(1));
+        usuario.setGoogleRecoverySub(google.sub());
+        usuario.setGoogleRecoveryEmail(google.email());
+        usuarioRepository.saveAndFlush(usuario);
+        afterCommit(() -> emailService.enviarRecuperacionGoogle(usuario, token));
+    }
+
+    /** The row lock serializes consumption with reissue, ordinary reset and forgot-password. */
+    @Transactional
+    public GoogleLoginResult completarRecuperacionGoogle(GoogleRecuperacionCompletarDTO dto) {
+        GoogleUsuario google = googleTokenVerifier.verificar(dto.idToken())
+                .orElseThrow(CredencialesInvalidasException::new);
+        if (dto.token() == null || dto.token().isBlank()) {
+            throw new CredencialesInvalidasException();
+        }
+        Usuario usuario = usuarioRepository.findLockedByGoogleRecoveryTokenHash(hashResetToken(dto.token()))
+                .orElseThrow(CredencialesInvalidasException::new);
+        if (usuario.getGoogleSub() != null || usuario.getGoogleRecoveryExpiresAt() == null
+                || !usuario.getGoogleRecoveryExpiresAt().isAfter(LocalDateTime.now())
+                || !google.sub().equals(usuario.getGoogleRecoverySub())
+                || !google.email().equals(usuario.getGoogleRecoveryEmail())
+                || !google.email().equals(usuario.getEmail())
+                || usuarioRepository.findByGoogleSub(google.sub()).isPresent()
+                || passwordEncoder.matches(dto.password(), usuario.getPasswordHash())) {
+            throw new CredencialesInvalidasException();
+        }
+        usuario.setGoogleSub(google.sub());
+        usuario.setPasswordHash(passwordEncoder.encode(dto.password()));
+        usuario.setTokenVersion((usuario.getTokenVersion() == null ? 0 : usuario.getTokenVersion()) + 1);
+        usuario.setResetToken(null);
+        usuario.setResetTokenExpira(null);
+        clearGoogleRecovery(usuario);
+        try {
+            // UNIQUE subject conflicts roll back password, version and challenge together.
+            usuarioRepository.saveAndFlush(usuario);
+        } catch (DataIntegrityViolationException conflict) {
+            throw new CredencialesInvalidasException();
+        }
+        // The controller receives this value only AFTER the transactional proxy commits.
+        return authenticateGoogle(usuario, google);
+    }
+
+    private static void clearGoogleRecovery(Usuario usuario) {
+        usuario.setGoogleRecoveryTokenHash(null);
+        usuario.setGoogleRecoveryExpiresAt(null);
+        usuario.setGoogleRecoverySub(null);
+        usuario.setGoogleRecoveryEmail(null);
+    }
+
+    private static void afterCommit(Runnable notification) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            notification.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                notification.run();
+            }
+        });
     }
 
     public record GoogleLoginResult(GoogleAuthResponseDTO dto, Optional<String> token) {
@@ -129,11 +199,12 @@ public class AuthService {
      * Nunca revela si el email está registrado: si no existe, se devuelve el
      * mismo resultado de éxito que si existiera.
      */
+    @Transactional
     public void olvidePassword(String email) {
         // Anti fuerza bruta: el chequeo va ANTES de verificar si el email existe.
         rateLimitService.verificarYConsumir(RateLimitService.Operacion.OLVIDE_PASSWORD, email);
 
-        usuarioRepository.findByEmail(email).ifPresent(usuario -> {
+        usuarioRepository.findLockedByEmail(email).ifPresent(usuario -> {
             String token = UUID.randomUUID().toString();
             // En BD se guarda SOLO el hash SHA-256 del token; el token plano viaja
             // por email (el usuario lo necesita para el link) y nunca se persiste.
@@ -141,7 +212,7 @@ public class AuthService {
             usuario.setResetTokenExpira(LocalDateTime.now().plusHours(1));
             usuarioRepository.save(usuario);
 
-            emailService.enviarRecuperacionPassword(usuario, token);
+            afterCommit(() -> emailService.enviarRecuperacionPassword(usuario, token));
         });
     }
 
@@ -151,10 +222,11 @@ public class AuthService {
      * Token inexistente y token expirado producen EXACTAMENTE el mismo error
      * genérico, para no revelar cuál de los dos casos es.
      */
+    @Transactional
     public void restablecerPassword(RestablecerPasswordDTO dto) {
         // El token que llega por el link se hashea con la MISMA función que se
         // usó al guardarlo: se busca por el hash almacenado.
-        Usuario usuario = usuarioRepository.findByResetToken(hashResetToken(dto.token()))
+        Usuario usuario = usuarioRepository.findLockedByResetToken(hashResetToken(dto.token()))
                 .orElseThrow(() -> new RecursoNoEncontradoException(MENSAJE_ENLACE_INVALIDO));
 
         if (usuario.getResetTokenExpira() == null
@@ -163,6 +235,7 @@ public class AuthService {
         }
 
         usuario.setPasswordHash(passwordEncoder.encode(dto.password()));
+        clearGoogleRecovery(usuario);
         // El token es de un solo uso: se limpia para que no se pueda reutilizar.
         usuario.setResetToken(null);
         usuario.setResetTokenExpira(null);

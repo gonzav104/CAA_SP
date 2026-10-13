@@ -837,3 +837,103 @@ BEGIN
     ALTER TABLE public.pacientes DROP COLUMN terapeuta_id RESTRICT;
 END $$;
 COMMIT;
+
+-- ========================================================
+-- MIGRACIÓN 018 — explicit Google identity and purpose-bound recovery
+-- Apply ONLY this block to post-017. Additive, no inferred backfill or DML.
+-- Stop on any unexpected schema/data failure; never apply historical migrations again.
+-- ========================================================
+BEGIN;
+SET LOCAL search_path = public, pg_catalog;
+SET LOCAL lock_timeout = '5s';
+LOCK TABLE public.usuarios IN ACCESS EXCLUSIVE MODE;
+
+DO $$
+DECLARE
+    present_columns integer;
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public'
+               AND ((table_name='usuarios' AND column_name='rol')
+                 OR (table_name='pacientes' AND column_name='terapeuta_id')))
+       OR NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid='public.pacientes'::regclass
+                      AND attname='organizacion_id' AND NOT attisdropped AND attnotnull) THEN
+        RAISE EXCEPTION '018: expected post-017 schema';
+    END IF;
+
+    SELECT count(*) INTO present_columns FROM pg_attribute
+    WHERE attrelid='public.usuarios'::regclass AND NOT attisdropped
+      AND attname IN ('google_sub', 'google_recovery_token_hash', 'google_recovery_expires_at',
+                      'google_recovery_sub', 'google_recovery_email');
+    IF present_columns NOT IN (0, 5) THEN
+        RAISE EXCEPTION '018: partial Google identity schema';
+    END IF;
+    IF present_columns = 0 THEN
+        ALTER TABLE public.usuarios
+            ADD COLUMN google_sub character varying(255),
+            ADD COLUMN google_recovery_token_hash character varying(64),
+            ADD COLUMN google_recovery_expires_at timestamp without time zone,
+            ADD COLUMN google_recovery_sub character varying(255),
+            ADD COLUMN google_recovery_email character varying(255);
+ALTER TABLE public.usuarios
+    ADD CONSTRAINT uq_usuarios_google_sub UNIQUE (google_sub),
+    ADD CONSTRAINT uq_usuarios_google_recovery_token UNIQUE (google_recovery_token_hash),
+    ADD CONSTRAINT ck_usuarios_google_sub CHECK (google_sub IS NULL OR btrim(google_sub) <> ''),
+    ADD CONSTRAINT ck_usuarios_google_recovery CHECK (
+        (google_recovery_token_hash IS NULL AND google_recovery_expires_at IS NULL
+         AND google_recovery_sub IS NULL AND google_recovery_email IS NULL)
+        OR
+        (google_recovery_token_hash IS NOT NULL AND google_recovery_expires_at IS NOT NULL
+         AND google_recovery_sub IS NOT NULL AND google_recovery_email IS NOT NULL
+         AND google_recovery_token_hash ~ '^[0-9a-f]{64}$'
+         AND btrim(google_recovery_sub) <> '' AND btrim(google_recovery_email) <> ''
+         AND google_sub IS NULL)
+    );
+    END IF;
+END $$;
+
+-- Verify both first application and reruns against the same canonical constraints.
+-- The temporary table is schema-only and disappears at commit; existing data are untouched.
+CREATE TEMP TABLE google_identity_expected (
+    google_sub character varying(255),
+    google_recovery_token_hash character varying(64),
+    google_recovery_expires_at timestamp without time zone,
+    google_recovery_sub character varying(255),
+    google_recovery_email character varying(255)
+) ON COMMIT DROP;
+ALTER TABLE google_identity_expected
+    ADD CONSTRAINT uq_usuarios_google_sub UNIQUE (google_sub),
+    ADD CONSTRAINT uq_usuarios_google_recovery_token UNIQUE (google_recovery_token_hash),
+    ADD CONSTRAINT ck_usuarios_google_sub CHECK (google_sub IS NULL OR btrim(google_sub) <> ''),
+    ADD CONSTRAINT ck_usuarios_google_recovery CHECK (
+        (google_recovery_token_hash IS NULL AND google_recovery_expires_at IS NULL
+         AND google_recovery_sub IS NULL AND google_recovery_email IS NULL)
+        OR
+        (google_recovery_token_hash IS NOT NULL AND google_recovery_expires_at IS NOT NULL
+         AND google_recovery_sub IS NOT NULL AND google_recovery_email IS NOT NULL
+         AND google_recovery_token_hash ~ '^[0-9a-f]{64}$'
+         AND btrim(google_recovery_sub) <> '' AND btrim(google_recovery_email) <> ''
+         AND google_sub IS NULL)
+    );
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_attribute expected
+        LEFT JOIN pg_attribute actual
+          ON actual.attrelid='public.usuarios'::regclass AND actual.attname=expected.attname
+             AND NOT actual.attisdropped
+        WHERE expected.attrelid='google_identity_expected'::regclass AND expected.attnum > 0
+          AND (actual.attnum IS NULL OR actual.atttypid <> expected.atttypid
+               OR actual.atttypmod <> expected.atttypmod OR actual.attnotnull OR actual.atthasdef
+               OR actual.attidentity <> '' OR actual.attgenerated <> '')
+    ) OR EXISTS (
+        SELECT 1 FROM pg_constraint expected
+        LEFT JOIN pg_constraint actual
+          ON actual.conrelid='public.usuarios'::regclass AND actual.conname=expected.conname
+        WHERE expected.conrelid='google_identity_expected'::regclass
+          AND (actual.oid IS NULL OR NOT actual.convalidated OR actual.condeferrable
+               OR pg_get_constraintdef(actual.oid) <> pg_get_constraintdef(expected.oid))
+    ) THEN
+        RAISE EXCEPTION '018: unexpected Google identity column or constraint shape';
+    END IF;
+END $$;
+COMMIT;

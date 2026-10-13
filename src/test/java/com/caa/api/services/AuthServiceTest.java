@@ -77,6 +77,52 @@ class AuthServiceTest {
                 .build();
     }
 
+    @Test
+    void precreatedLocalAccountMustNotAuthenticateThroughGoogleEmail() {
+        given(googleTokenVerifier.verificar("victim-proof"))
+                .willReturn(Optional.of(new GoogleUsuario("google-sub", "test@ejemplo.com", "Victim")));
+        given(usuarioRepository.findByEmail("test@ejemplo.com"))
+                .willReturn(Optional.of(usuarioExistente));
+        assertThatThrownBy(() -> authService.loginConGoogle("victim-proof"))
+                .isInstanceOf(CredencialesInvalidasException.class);
+        verify(jwtService, never()).generarToken(any());
+    }
+
+    @Test
+    void precreatedLocalAccountMustNotCompleteGoogleRegistration() {
+        given(googleTokenVerifier.verificar("proof"))
+                .willReturn(Optional.of(new GoogleUsuario("subject", "test@ejemplo.com", "Victim")));
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(usuarioExistente));
+        assertThatThrownBy(() -> authService.completarRegistroGoogle(new GoogleCompletarRegistroDTO("proof")))
+                .isInstanceOf(CredencialesInvalidasException.class);
+        verify(jwtService, never()).generarToken(any());
+        verify(usuarioRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void subjectBoundToDifferentEmailCannotAuthenticateOrMerge() {
+        usuarioExistente.setGoogleSub("subject");
+        given(googleTokenVerifier.verificar("proof"))
+                .willReturn(Optional.of(new GoogleUsuario("subject", "different@example.test", "Other")));
+        given(usuarioRepository.findByGoogleSub("subject")).willReturn(Optional.of(usuarioExistente));
+        assertThatThrownBy(() -> authService.loginConGoogle("proof"))
+                .isInstanceOf(CredencialesInvalidasException.class);
+        assertThatThrownBy(() -> authService.completarRegistroGoogle(new GoogleCompletarRegistroDTO("proof")))
+                .isInstanceOf(CredencialesInvalidasException.class);
+        verify(jwtService, never()).generarToken(any());
+    }
+
+    @Test
+    void differentSubjectAtSameEmailIsRejected() {
+        usuarioExistente.setGoogleSub("original-subject");
+        given(googleTokenVerifier.verificar("proof"))
+                .willReturn(Optional.of(new GoogleUsuario("other-subject", "test@ejemplo.com", "Other")));
+        given(usuarioRepository.findByEmail("test@ejemplo.com")).willReturn(Optional.of(usuarioExistente));
+        assertThatThrownBy(() -> authService.loginConGoogle("proof"))
+                .isInstanceOf(CredencialesInvalidasException.class);
+        verify(jwtService, never()).generarToken(any());
+    }
+
     // ──────────────────────────────────────────────
     //  SAD PATHS — Login tradicional
     // ──────────────────────────────────────────────
@@ -135,9 +181,10 @@ class AuthServiceTest {
     @Test
     @DisplayName("Login con Google (usuario EXISTENTE) → requiereRol=false, token presente, no crea usuario")
     void loginConGoogle_usuarioExistente_devuelveToken() {
+        usuarioExistente.setGoogleSub("google-sub");
         given(googleTokenVerifier.verificar("id-token-valido"))
-                .willReturn(Optional.of(new GoogleUsuario("test@ejemplo.com", "Test User")));
-        given(usuarioRepository.findByEmail("test@ejemplo.com"))
+                .willReturn(Optional.of(new GoogleUsuario("google-sub", "test@ejemplo.com", "Test User")));
+        given(usuarioRepository.findByGoogleSub("google-sub"))
                 .willReturn(Optional.of(usuarioExistente));
         given(jwtService.generarToken(usuarioExistente))
                 .willReturn("jwt-token-google");
@@ -156,7 +203,7 @@ class AuthServiceTest {
     @DisplayName("Login con Google (usuario NO existente) → requiereRol=true, sin token, SIN crear usuario")
     void loginConGoogle_usuarioNuevo_pideRol() {
         given(googleTokenVerifier.verificar("id-token-valido"))
-                .willReturn(Optional.of(new GoogleUsuario("nuevo@ejemplo.com", "Nuevo Usuario")));
+                .willReturn(Optional.of(new GoogleUsuario("google-sub", "nuevo@ejemplo.com", "Nuevo Usuario")));
         given(usuarioRepository.findByEmail("nuevo@ejemplo.com"))
                 .willReturn(Optional.empty());
 
@@ -193,10 +240,10 @@ class AuthServiceTest {
     void completarRegistroGoogle_creaUsuarioSinRol() {
         GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("id-token-nuevo");
         given(googleTokenVerifier.verificar("id-token-nuevo"))
-                .willReturn(Optional.of(new GoogleUsuario("nuevo@ejemplo.com", "Nuevo Usuario")));
+                .willReturn(Optional.of(new GoogleUsuario("google-sub", "nuevo@ejemplo.com", "Nuevo Usuario")));
         given(usuarioRepository.findByEmail("nuevo@ejemplo.com"))
                 .willReturn(Optional.empty());
-        given(usuarioRepository.save(any(Usuario.class)))
+        given(usuarioRepository.saveAndFlush(any(Usuario.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
         given(jwtService.generarToken(any(Usuario.class)))
                 .willReturn("jwt-token-familiar");
@@ -205,8 +252,9 @@ class AuthServiceTest {
 
         // Identity only: organization permissions are assigned separately.
         ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
-        verify(usuarioRepository).save(captor.capture());
+        verify(usuarioRepository).saveAndFlush(captor.capture());
         Usuario creado = captor.getValue();
+        assertThat(creado.getGoogleSub()).isEqualTo("google-sub");
         assertThat(creado.getEmail()).isEqualTo("nuevo@ejemplo.com");
         // Un usuario recién creado arranca con tokenVersion=0 (@Builder.Default)
         assertThat(creado.getTokenVersion()).isZero();
@@ -221,11 +269,13 @@ class AuthServiceTest {
     @Test
     @DisplayName("completarRegistroGoogle — caso de carrera: usuario ya existe → loguea sin duplicar")
     void completarRegistroGoogle_casoCarrera_logueaSinDuplicar() {
+        usuarioExistente.setGoogleSub("google-sub");
+        usuarioExistente.setEmail("carrera@ejemplo.com");
         GoogleCompletarRegistroDTO dto = new GoogleCompletarRegistroDTO("id-token-doble");
         given(googleTokenVerifier.verificar("id-token-doble"))
-                .willReturn(Optional.of(new GoogleUsuario("carrera@ejemplo.com", "Carrera")));
+                .willReturn(Optional.of(new GoogleUsuario("google-sub", "carrera@ejemplo.com", "Carrera")));
         // El usuario ya fue creado por otro thread/pestaña
-        given(usuarioRepository.findByEmail("carrera@ejemplo.com"))
+        given(usuarioRepository.findByGoogleSub("google-sub"))
                 .willReturn(Optional.of(usuarioExistente));
         given(jwtService.generarToken(usuarioExistente))
                 .willReturn("jwt-token-carrera");
@@ -261,7 +311,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("olvidePassword con email EXISTENTE → guarda el HASH del token (no el plano) con expiración y envía el token plano por email")
     void olvidePassword_emailExistente_guardaTokenYEnviaEmail() {
-        given(usuarioRepository.findByEmail("test@ejemplo.com"))
+        given(usuarioRepository.findLockedByEmail("test@ejemplo.com"))
                 .willReturn(Optional.of(usuarioExistente));
 
         authService.olvidePassword("test@ejemplo.com");
@@ -287,7 +337,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("olvidePassword con email INEXISTENTE → no guarda nada ni envía email (éxito silencioso)")
     void olvidePassword_emailInexistente_noHaceNada() {
-        given(usuarioRepository.findByEmail("noexiste@ejemplo.com"))
+        given(usuarioRepository.findLockedByEmail("noexiste@ejemplo.com"))
                 .willReturn(Optional.empty());
 
         authService.olvidePassword("noexiste@ejemplo.com");
@@ -303,7 +353,7 @@ class AuthServiceTest {
         // El token se guardó hasheado (olvidePassword nunca persiste el plano)
         usuarioExistente.setResetToken(hashSha256(token));
         usuarioExistente.setResetTokenExpira(LocalDateTime.now().plusHours(1));
-        given(usuarioRepository.findByResetToken(hashSha256(token)))
+        given(usuarioRepository.findLockedByResetToken(hashSha256(token)))
                 .willReturn(Optional.of(usuarioExistente));
         given(passwordEncoder.encode("NuevaClave1!")).willReturn("$2a$10$hashNuevo");
 
@@ -326,7 +376,7 @@ class AuthServiceTest {
         String token = "token-expirado";
         usuarioExistente.setResetToken(hashSha256(token));
         usuarioExistente.setResetTokenExpira(LocalDateTime.now().minusHours(1));
-        given(usuarioRepository.findByResetToken(hashSha256(token)))
+        given(usuarioRepository.findLockedByResetToken(hashSha256(token)))
                 .willReturn(Optional.of(usuarioExistente));
 
         assertThatThrownBy(() -> authService.restablecerPassword(
@@ -342,7 +392,7 @@ class AuthServiceTest {
     @DisplayName("restablecerPassword con token INEXISTENTE → el MISMO error genérico que el expirado")
     void restablecerPassword_tokenInexistente_mismoErrorQueExpirado() {
         // El lookup interno es por el hash del token recibido
-        given(usuarioRepository.findByResetToken(hashSha256("token-inexistente")))
+        given(usuarioRepository.findLockedByResetToken(hashSha256("token-inexistente")))
                 .willReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.restablecerPassword(
@@ -382,7 +432,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.olvidePassword("test@ejemplo.com"))
                 .isInstanceOf(DemasiadosIntentosException.class);
 
-        verify(usuarioRepository, never()).findByEmail(anyString());
+        verify(usuarioRepository, never()).findLockedByEmail(anyString());
         verify(usuarioRepository, never()).save(any());
         verify(emailService, never()).enviarRecuperacionPassword(any(), anyString());
     }
