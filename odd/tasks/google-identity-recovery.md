@@ -79,7 +79,8 @@ Verified source boundary: `d29ac73`, including `db1b548` (stable Google binding 
 - Included PostgreSQL proofs: Google recovery 15 tests; additive migration 018 four tests; legacy cleanup/bootstrap parity ten tests; historical cutover/restore three tests; historical readiness one test. The current backend starts as a real Spring application against disposable post-018 PostgreSQL during rehearsal.
 - The first 40,056 bytes of historical `init.sql` remain identical. Migration 018 SHA-256 remains `410d556bb7881d16ad2f2efa5c481ee54b6e7a07907f854c52bb08e591018c05`.
 - Diagnostic logs: `/tmp/google-identity-independent-resumed-final-full.log` and `/tmp/google-identity-independent-resumed-package.log`. The durable results above do not depend on retaining temporary logs.
-- No active database was accessed or migrated; **018 is NOT applied to caa_db**. No RDD, push or production deployment occurred.
+- At the time: no active database was accessed or migrated; **018 is NOT applied to caa_db**. No RDD, push or production deployment occurred.
+- Update 2026-10-15: the active `caa_db` was verified read-only (`information_schema`) to be post-018.
 - Engram mirror remains pending because the runtime has no authoritative registered session identity.
 
 All implementation work units and independent verification are complete. Remaining deployment and integration boundaries are documented in `docs/google-identity-recovery.md`; no frontend recovery screen, live-provider test or Google email-transfer policy is claimed.

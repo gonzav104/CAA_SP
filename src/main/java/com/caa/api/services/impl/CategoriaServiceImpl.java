@@ -31,8 +31,8 @@ public class CategoriaServiceImpl implements CategoriaService {
     @Override
     @Transactional
     public CategoriaResponseDTO crearCategoria(UUID pacienteId, UUID cartillaId,
-                                               CategoriaRegistroDTO dto, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                                               CategoriaRegistroDTO dto, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de creador_id (design-part2 §11.2)
@@ -57,8 +57,8 @@ public class CategoriaServiceImpl implements CategoriaService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CategoriaResponseDTO> obtenerCategoriasDeCartilla(UUID pacienteId, UUID cartillaId, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public List<CategoriaResponseDTO> obtenerCategoriasDeCartilla(UUID pacienteId, UUID cartillaId, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
@@ -74,8 +74,8 @@ public class CategoriaServiceImpl implements CategoriaService {
     @Override
     @Transactional
     public CategoriaResponseDTO actualizarCategoria(UUID pacienteId, UUID cartillaId, UUID categoriaId,
-                                                    CategoriaActualizacionDTO dto, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                                                    CategoriaActualizacionDTO dto, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de creador_id (design-part2 §11.2)
@@ -98,8 +98,8 @@ public class CategoriaServiceImpl implements CategoriaService {
 
     @Override
     @Transactional
-    public void eliminarCategoria(UUID pacienteId, UUID cartillaId, UUID categoriaId, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public void eliminarCategoria(UUID pacienteId, UUID cartillaId, UUID categoriaId, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de creador_id (design-part2 §11.2)

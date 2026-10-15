@@ -27,8 +27,8 @@ public class SesionServiceImpl implements SesionService {
     private final AccesoService accesoService;
 
     @Override
-    public SesionResponseDTO registrarSesion(UUID pacienteId, SesionRegistroDTO dto, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public SesionResponseDTO registrarSesion(UUID pacienteId, SesionRegistroDTO dto, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Las sesiones son un recurso clínico (design-part2 §11.2): GESTION_CLINICA exige
@@ -66,8 +66,8 @@ public class SesionServiceImpl implements SesionService {
 
     @Override
     @Transactional(readOnly = true)
-    public SesionResponseDTO obtenerSesion(UUID pacienteId, UUID sesionId, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public SesionResponseDTO obtenerSesion(UUID pacienteId, UUID sesionId, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
@@ -80,8 +80,8 @@ public class SesionServiceImpl implements SesionService {
 
     @Override
     @Transactional
-    public SesionResponseDTO actualizarSesion(UUID pacienteId, UUID sesionId, SesionActualizacionDTO dto, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public SesionResponseDTO actualizarSesion(UUID pacienteId, UUID sesionId, SesionActualizacionDTO dto, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
@@ -101,8 +101,8 @@ public class SesionServiceImpl implements SesionService {
 
     @Override
     @Transactional
-    public void eliminarSesion(UUID pacienteId, UUID sesionId, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public void eliminarSesion(UUID pacienteId, UUID sesionId, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);

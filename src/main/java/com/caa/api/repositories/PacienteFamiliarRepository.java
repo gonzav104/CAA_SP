@@ -16,6 +16,7 @@ public interface PacienteFamiliarRepository extends JpaRepository<PacienteFamili
     @EntityGraph(attributePaths = "paciente")
     List<PacienteFamiliar> findByUsuario_Id(UUID usuarioId);
 
+    @EntityGraph(attributePaths = "usuario")
     List<PacienteFamiliar> findByPaciente_Id(UUID pacienteId);
 
     Optional<PacienteFamiliar> findByPaciente_IdAndUsuario_Id(UUID pacienteId, UUID usuarioId);

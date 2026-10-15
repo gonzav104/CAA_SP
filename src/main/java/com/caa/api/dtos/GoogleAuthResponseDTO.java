@@ -1,7 +1,7 @@
 package com.caa.api.dtos;
 
 public record GoogleAuthResponseDTO(
-        boolean requiereRol,
+        boolean requiereRegistro,
         String tipo,
         String email,
         String nombre

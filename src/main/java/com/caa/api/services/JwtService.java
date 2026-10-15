@@ -59,17 +59,8 @@ public class JwtService {
     }
 
     /**
-     * Valida la firma y expiracion del token, y devuelve el email (subject).
-     * Lanza RuntimeException con mensaje claro si el token no es valido.
-     */
-    public String validarYObtenerEmail(String token) {
-        return obtenerClaimsValidados(token).getSubject();
-    }
-
-    /**
      * Parsea y valida el token (firma + expiración), devolviendo los claims.
-     * Mismo criterio de errores que {@link #validarYObtenerEmail(String)}: lanza
-     * RuntimeException con mensaje claro si el token no es válido.
+     * Lanza RuntimeException con mensaje claro si el token no es válido.
      */
     public Claims obtenerClaimsValidados(String token) {
         try {

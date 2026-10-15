@@ -57,7 +57,9 @@ No active database is touched. A later production application requires separate 
 
 At source commit `d29ac73`, the independent final suite passed **588 tests with zero failures, errors or skips**, and the final offline package succeeded. PostgreSQL proofs cover migration replay/preservation, historical bootstrap parity, current-backend startup, recovery concurrency and historical readiness. The full recovery evidence is recorded in `odd/tasks/google-identity-recovery.md`.
 
-**Implementation and isolated rehearsal are complete; migration 018 has NOT been applied to the active database.** A separate approved deployment is still required.
+At the time of the rehearsal: **implementation and isolated rehearsal are complete; migration 018 had NOT been applied to the active database.** A separate approved deployment was still required.
+
+Update 2026-10-15: the active `caa_db` was verified read-only (`information_schema`) to be post-018.
 
 ## Remaining risks outside this objective
 

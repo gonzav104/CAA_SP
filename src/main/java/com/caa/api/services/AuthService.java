@@ -11,13 +11,7 @@ import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.GoogleTokenVerifier.GoogleUsuario;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
-import java.util.Base64;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
-import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -32,8 +26,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private static final SecureRandom RECOVERY_RANDOM = new SecureRandom();
-
     /**
      * Mensaje único para token inexistente y token expirado: nunca revelar
      * cuál de los dos casos es (regla del proyecto de no exponer información).
@@ -46,6 +38,7 @@ public class AuthService {
     private final GoogleTokenVerifier googleTokenVerifier;
     private final EmailService emailService;
     private final RateLimitService rateLimitService;
+    private final TokenSeguro tokenSeguro;
 
     public AuthResponseDTO login(LoginRequestDTO dto) {
         // Anti fuerza bruta: el chequeo va ANTES de validar credenciales.
@@ -124,10 +117,8 @@ public class AuthService {
             return;
         }
         Usuario usuario = candidate.get();
-        byte[] random = new byte[32];
-        RECOVERY_RANDOM.nextBytes(random);
-        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(random);
-        usuario.setGoogleRecoveryTokenHash(hashResetToken(token));
+        String token = tokenSeguro.generar();
+        usuario.setGoogleRecoveryTokenHash(tokenSeguro.hash(token));
         usuario.setGoogleRecoveryExpiresAt(LocalDateTime.now().plusHours(1));
         usuario.setGoogleRecoverySub(google.sub());
         usuario.setGoogleRecoveryEmail(google.email());
@@ -143,7 +134,7 @@ public class AuthService {
         if (dto.token() == null || dto.token().isBlank()) {
             throw new CredencialesInvalidasException();
         }
-        Usuario usuario = usuarioRepository.findLockedByGoogleRecoveryTokenHash(hashResetToken(dto.token()))
+        Usuario usuario = usuarioRepository.findLockedByGoogleRecoveryTokenHash(tokenSeguro.hash(dto.token()))
                 .orElseThrow(CredencialesInvalidasException::new);
         if (usuario.getGoogleSub() != null || usuario.getGoogleRecoveryExpiresAt() == null
                 || !usuario.getGoogleRecoveryExpiresAt().isAfter(LocalDateTime.now())
@@ -208,7 +199,7 @@ public class AuthService {
             String token = UUID.randomUUID().toString();
             // En BD se guarda SOLO el hash SHA-256 del token; el token plano viaja
             // por email (el usuario lo necesita para el link) y nunca se persiste.
-            usuario.setResetToken(hashResetToken(token));
+            usuario.setResetToken(tokenSeguro.hash(token));
             usuario.setResetTokenExpira(LocalDateTime.now().plusHours(1));
             usuarioRepository.save(usuario);
 
@@ -226,7 +217,7 @@ public class AuthService {
     public void restablecerPassword(RestablecerPasswordDTO dto) {
         // El token que llega por el link se hashea con la MISMA función que se
         // usó al guardarlo: se busca por el hash almacenado.
-        Usuario usuario = usuarioRepository.findLockedByResetToken(hashResetToken(dto.token()))
+        Usuario usuario = usuarioRepository.findLockedByResetToken(tokenSeguro.hash(dto.token()))
                 .orElseThrow(() -> new RecursoNoEncontradoException(MENSAJE_ENLACE_INVALIDO));
 
         if (usuario.getResetTokenExpira() == null
@@ -243,20 +234,5 @@ public class AuthService {
         // los JWT emitidos con la versión anterior dejan de autenticar.
         usuario.setTokenVersion((usuario.getTokenVersion() == null ? 0 : usuario.getTokenVersion()) + 1);
         usuarioRepository.save(usuario);
-    }
-
-    /**
-     * SHA-256 en hex (minúsculas) del token plano. Helper único para ambos lados:
-     * {@code olvidePassword} guarda el hash y {@code restablecerPassword} busca
-     * por el hash — ambos usan EXACTAMENTE la misma codificación.
-     */
-    private static String hashResetToken(String token) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 no disponible en este JVM", e);
-        }
     }
 }

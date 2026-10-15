@@ -13,11 +13,11 @@ public interface ColaboradorService {
      * email destino no necesita tener cuenta todavía. Nada se concede hasta que la invitación
      * se acepta.
      */
-    InvitacionResponseDTO vincularColaborador(UUID pacienteId, ColaboradorRegistroDTO dto, String emailTerapeuta);
+    InvitacionResponseDTO vincularColaborador(UUID pacienteId, ColaboradorRegistroDTO dto, String email);
 
-    List<ColaboradorResponseDTO> obtenerColaboradores(UUID pacienteId, String emailTerapeuta);
+    List<ColaboradorResponseDTO> obtenerColaboradores(UUID pacienteId, String email);
 
-    ColaboradorResponseDTO actualizarPermiso(UUID pacienteId, UUID usuarioId, ColaboradorActualizacionDTO dto, String emailTerapeuta);
+    ColaboradorResponseDTO actualizarPermiso(UUID pacienteId, UUID usuarioId, ColaboradorActualizacionDTO dto, String email);
 
-    void revocarColaborador(UUID pacienteId, UUID usuarioId, String emailTerapeuta);
+    void revocarColaborador(UUID pacienteId, UUID usuarioId, String email);
 }

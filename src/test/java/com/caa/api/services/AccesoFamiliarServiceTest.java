@@ -7,13 +7,24 @@ import com.caa.api.exceptions.RecursoNoEncontradoException;
 import com.caa.api.models.Cartilla;
 import com.caa.api.models.Categoria;
 import com.caa.api.models.ItemCartilla;
+import com.caa.api.models.Membresia;
+import com.caa.api.models.MembresiaId;
+import com.caa.api.models.Organizacion;
 import com.caa.api.models.Paciente;
+import com.caa.api.models.PacienteFamiliar;
+import com.caa.api.models.PacienteFamiliarId;
+import com.caa.api.models.PacienteTerapeutaId;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.PictogramaGlobal;
+import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.CartillaRepository;
 import com.caa.api.repositories.CategoriaRepository;
 import com.caa.api.repositories.ItemCartillaRepository;
+import com.caa.api.repositories.MembresiaRepository;
+import com.caa.api.repositories.PacienteFamiliarRepository;
+import com.caa.api.repositories.PacienteRepository;
+import com.caa.api.repositories.PacienteTerapeutaRepository;
 import com.caa.api.repositories.PictogramaGlobalRepository;
 import com.caa.api.repositories.PictogramaCustomRepository;
 import com.caa.api.repositories.UsuarioRepository;
@@ -22,7 +33,7 @@ import com.caa.api.services.AccesoService.Capacidad;
 import com.caa.api.services.impl.CartillaServiceImpl;
 import com.caa.api.services.impl.CategoriaServiceImpl;
 import com.caa.api.services.impl.ItemCartillaServiceImpl;
-import com.caa.api.services.impl.PacienteServiceImpl;
+import com.caa.api.services.impl.AccesoServiceImpl;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -52,61 +63,83 @@ import static org.mockito.Mockito.verify;
 class AccesoFamiliarServiceTest {
 
     // ──────────────────────────────────────────────
-    //  Helper de acceso (PacienteServiceImpl)
+    //  Acceso al paciente (AccesoServiceImpl.exigirCapacidad)
     // ──────────────────────────────────────────────
 
     @Nested
     @ExtendWith(MockitoExtension.class)
-    @DisplayName("PacienteServiceImpl — helper de acceso")
-    class PacienteHelperTest {
+    @DisplayName("AccesoServiceImpl — exigirCapacidad para terapeuta y familiar")
+    class PacienteAccesoTest {
 
-        @Mock AccesoService accesoService;
+        @Mock MembresiaRepository membresiaRepository;
+        @Mock PacienteRepository pacienteRepository;
+        @Mock PacienteTerapeutaRepository pacienteTerapeutaRepository;
+        @Mock PacienteFamiliarRepository pacienteFamiliarRepository;
 
-        @InjectMocks PacienteServiceImpl pacienteService;
+        @InjectMocks AccesoServiceImpl accesoService;
 
+        private UUID organizacionId;
         private UUID pacienteId;
+        private Organizacion organizacion;
         private Usuario terapeuta;
         private Usuario familiar;
         private Paciente paciente;
 
         @BeforeEach
         void setUp() {
+            organizacionId = UUID.randomUUID();
             pacienteId = UUID.randomUUID();
+            organizacion = Organizacion.builder().id(organizacionId).nombre("Consultorio").build();
             terapeuta = Usuario.builder().id(UUID.randomUUID()).build();
             familiar = Usuario.builder().id(UUID.randomUUID()).build();
-            paciente = Paciente.builder().id(pacienteId).build();
+            paciente = Paciente.builder().id(pacienteId).organizacion(organizacion).build();
+            given(pacienteRepository.findById(pacienteId)).willReturn(Optional.of(paciente));
+        }
+
+        private void familiarSinMembresiaConPermiso(PermisoColaborador permiso) {
+            given(membresiaRepository.findById(new MembresiaId(organizacionId, familiar.getId())))
+                    .willReturn(Optional.empty());
+            Optional<PacienteFamiliar> vinculo = permiso == null ? Optional.empty()
+                    : Optional.of(PacienteFamiliar.builder()
+                            .id(new PacienteFamiliarId(pacienteId, familiar.getId()))
+                            .paciente(paciente).usuario(familiar).permiso(permiso).build());
+            given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiar.getId()))
+                    .willReturn(vinculo);
         }
 
         @Test
-        @DisplayName("Terapeuta dueño → lee el paciente (delega en AccesoService.exigirCapacidad(LEER))")
+        @DisplayName("Terapeuta asignado → lee el paciente (exigirCapacidad(LEER))")
         void terapeutaVeSuPaciente() {
-            given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER))
-                    .willReturn(new AccesoPaciente(paciente, null, false, null));
+            Membresia membresia = Membresia.builder()
+                    .id(new MembresiaId(organizacionId, terapeuta.getId()))
+                    .organizacion(organizacion).usuario(terapeuta)
+                    .rolGestion(RolGestion.MIEMBRO).esTerapeuta(true).build();
+            given(membresiaRepository.findById(new MembresiaId(organizacionId, terapeuta.getId())))
+                    .willReturn(Optional.of(membresia));
+            given(pacienteTerapeutaRepository.existsById(new PacienteTerapeutaId(pacienteId, terapeuta.getId())))
+                    .willReturn(true);
 
-            Paciente resultado = pacienteService.pacienteLegibleParaUsuario(pacienteId, terapeuta);
+            Paciente resultado = accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER).paciente();
 
             assertThat(resultado.getId()).isEqualTo(pacienteId);
-            verify(accesoService).exigirCapacidad(pacienteId, terapeuta, Capacidad.LEER);
         }
 
         @Test
         @DisplayName("Familiar vinculado → lee el paciente")
         void familiarVinculadoPuedeLeer() {
-            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
-                    .willReturn(new AccesoPaciente(paciente, null, false, PermisoColaborador.LECTURA));
+            familiarSinMembresiaConPermiso(PermisoColaborador.LECTURA);
 
-            Paciente resultado = pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar);
+            Paciente resultado = accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER).paciente();
 
             assertThat(resultado.getId()).isEqualTo(pacienteId);
         }
 
         @Test
-        @DisplayName("Familiar sin vínculo → RecursoNoEncontradoException (propagada desde AccesoService)")
+        @DisplayName("Familiar sin vínculo → RecursoNoEncontradoException genérica")
         void familiarSinVinculoNoPuedeLeer() {
-            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
-                    .willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+            familiarSinMembresiaConPermiso(null);
 
-            assertThatThrownBy(() -> pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar))
+            assertThatThrownBy(() -> accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
                     .isInstanceOf(RecursoNoEncontradoException.class)
                     .hasMessageContaining("no tiene permisos");
         }
@@ -114,17 +147,14 @@ class AccesoFamiliarServiceTest {
         @Test
         @DisplayName("Familiar con LECTURA puede leer pero NO editar")
         void familiarLecturaNoPuedeEditar() {
-            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
-                    .willReturn(new AccesoPaciente(paciente, null, false, PermisoColaborador.LECTURA));
-            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
-                    .willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
+            familiarSinMembresiaConPermiso(PermisoColaborador.LECTURA);
 
             // Lee: ok
-            assertThatCode(() -> pacienteService.pacienteLegibleParaUsuario(pacienteId, familiar))
+            assertThatCode(() -> accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
                     .doesNotThrowAnyException();
 
             // Edita: lanza
-            assertThatThrownBy(() -> pacienteService.verificarEdicionParaUsuario(pacienteId, familiar))
+            assertThatThrownBy(() -> accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
                     .isInstanceOf(RecursoNoEncontradoException.class)
                     .hasMessageContaining("no tiene permisos");
         }
@@ -132,10 +162,11 @@ class AccesoFamiliarServiceTest {
         @Test
         @DisplayName("Familiar con EDICION_LIMITADA puede leer y editar")
         void familiarEdicionLimitadaPuedeEditar() {
-            given(accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
-                    .willReturn(new AccesoPaciente(paciente, null, false, PermisoColaborador.EDICION_LIMITADA));
+            familiarSinMembresiaConPermiso(PermisoColaborador.EDICION_LIMITADA);
 
-            assertThatCode(() -> pacienteService.verificarEdicionParaUsuario(pacienteId, familiar))
+            assertThatCode(() -> accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.LEER))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> accesoService.exigirCapacidad(pacienteId, familiar, Capacidad.EDITAR_CONTENIDO))
                     .doesNotThrowAnyException();
         }
     }

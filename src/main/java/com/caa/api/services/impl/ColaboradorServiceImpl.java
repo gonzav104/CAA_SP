@@ -39,16 +39,16 @@ public class ColaboradorServiceImpl implements ColaboradorService {
     @Override
     @Transactional
     public InvitacionResponseDTO vincularColaborador(UUID pacienteId, ColaboradorRegistroDTO dto,
-                                                       String emailTerapeuta) {
+                                                       String email) {
         // La autorización (Capacidad.GESTION_CLINICA sobre el paciente) y la no-enumeración de
         // cuentas ya existentes/pendientes viven en InvitacionServiceImpl.crearFamiliar.
-        return invitacionService.crearFamiliar(pacienteId, dto.email(), dto.permiso(), emailTerapeuta);
+        return invitacionService.crearFamiliar(pacienteId, dto.email(), dto.permiso(), email);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<ColaboradorResponseDTO> obtenerColaboradores(UUID pacienteId, String emailTerapeuta) {
-        Usuario usuario = usuarioAutenticado(emailTerapeuta);
+    public List<ColaboradorResponseDTO> obtenerColaboradores(UUID pacienteId, String email) {
+        Usuario usuario = usuarioAutenticado(email);
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         return pacienteFamiliarRepository.findByPaciente_Id(pacienteId).stream()
@@ -59,8 +59,8 @@ public class ColaboradorServiceImpl implements ColaboradorService {
     @Override
     @Transactional
     public ColaboradorResponseDTO actualizarPermiso(UUID pacienteId, UUID usuarioId,
-                                                    ColaboradorActualizacionDTO dto, String emailTerapeuta) {
-        Usuario usuario = usuarioAutenticado(emailTerapeuta);
+                                                    ColaboradorActualizacionDTO dto, String email) {
+        Usuario usuario = usuarioAutenticado(email);
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         PacienteFamiliar vinculo = pacienteFamiliarRepository
@@ -74,8 +74,8 @@ public class ColaboradorServiceImpl implements ColaboradorService {
 
     @Override
     @Transactional
-    public void revocarColaborador(UUID pacienteId, UUID usuarioId, String emailTerapeuta) {
-        Usuario usuario = usuarioAutenticado(emailTerapeuta);
+    public void revocarColaborador(UUID pacienteId, UUID usuarioId, String email) {
+        Usuario usuario = usuarioAutenticado(email);
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.GESTION_CLINICA);
 
         PacienteFamiliar vinculo = pacienteFamiliarRepository

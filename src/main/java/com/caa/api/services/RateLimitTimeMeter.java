@@ -36,11 +36,4 @@ public class RateLimitTimeMeter implements TimeMeter {
     public void avanzar(Duration duracion) {
         offsetNanos.addAndGet(duracion.toNanos());
     }
-
-    /**
-     * Vuelve el reloj a tiempo real. Solo para tests.
-     */
-    public void reiniciar() {
-        offsetNanos.set(0);
-    }
 }

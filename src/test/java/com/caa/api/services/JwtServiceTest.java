@@ -49,7 +49,7 @@ class JwtServiceTest {
 
     @Test
     @DisplayName("Token expirado → lanza RuntimeException con mensaje claro")
-    void validarYObtenerEmail_tokenExpirado_lanzaExcepcion() {
+    void obtenerClaimsValidados_tokenExpirado_lanzaExcepcion() {
         // Arrange: creo un token que ya expiró (exp en el pasado)
         String tokenExpirado = Jwts.builder()
                 .subject("test@ejemplo.com")
@@ -60,27 +60,27 @@ class JwtServiceTest {
                 .compact();
 
         // Act & Assert
-        assertThatThrownBy(() -> jwtService.validarYObtenerEmail(tokenExpirado))
+        assertThatThrownBy(() -> jwtService.obtenerClaimsValidados(tokenExpirado))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("expirado");
     }
 
     @Test
     @DisplayName("Token con firma inválida (alterado) → lanza RuntimeException con mensaje claro")
-    void validarYObtenerEmail_firmaInvalida_lanzaExcepcion() {
+    void obtenerClaimsValidados_firmaInvalida_lanzaExcepcion() {
         // Arrange: genero un token válido y le cambio los últimos caracteres
         String tokenValido = jwtService.generarToken(usuario);
         String tokenAlterado = tokenValido.substring(0, tokenValido.length() - 5) + "XXXXX";
 
         // Act & Assert
-        assertThatThrownBy(() -> jwtService.validarYObtenerEmail(tokenAlterado))
+        assertThatThrownBy(() -> jwtService.obtenerClaimsValidados(tokenAlterado))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("firma");
     }
 
     @Test
     @DisplayName("Token firmado con otra clave → lanza RuntimeException")
-    void validarYObtenerEmail_otraClave_lanzaExcepcion() {
+    void obtenerClaimsValidados_otraClave_lanzaExcepcion() {
         // Arrange: firmo con una clave diferente (raw UTF-8, mismo formato)
         String otraClave = "OtraClaveSecretaParaTests1234567890abcdefGhIjKlMnOpQrStUv";
         SecretKey otraKey = Keys.hmacShaKeyFor(otraClave.getBytes(StandardCharsets.UTF_8));
@@ -94,25 +94,25 @@ class JwtServiceTest {
                 .compact();
 
         // Act & Assert
-        assertThatThrownBy(() -> jwtService.validarYObtenerEmail(tokenConOtraClave))
+        assertThatThrownBy(() -> jwtService.obtenerClaimsValidados(tokenConOtraClave))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("firma");
     }
 
     @Test
     @DisplayName("Token malformado (string basura) → lanza RuntimeException")
-    void validarYObtenerEmail_tokenBasura_lanzaExcepcion() {
-        assertThatThrownBy(() -> jwtService.validarYObtenerEmail("esto-no-es-un-token"))
+    void obtenerClaimsValidados_tokenBasura_lanzaExcepcion() {
+        assertThatThrownBy(() -> jwtService.obtenerClaimsValidados("esto-no-es-un-token"))
                 .isInstanceOf(RuntimeException.class);
     }
 
     @Test
     @DisplayName("Token null o vacío → lanza RuntimeException")
-    void validarYObtenerEmail_tokenNulo_lanzaExcepcion() {
-        assertThatThrownBy(() -> jwtService.validarYObtenerEmail(null))
+    void obtenerClaimsValidados_tokenNulo_lanzaExcepcion() {
+        assertThatThrownBy(() -> jwtService.obtenerClaimsValidados(null))
                 .isInstanceOf(RuntimeException.class);
 
-        assertThatThrownBy(() -> jwtService.validarYObtenerEmail(""))
+        assertThatThrownBy(() -> jwtService.obtenerClaimsValidados(""))
                 .isInstanceOf(RuntimeException.class);
     }
 
@@ -182,11 +182,11 @@ class JwtServiceTest {
     }
 
     @Test
-    @DisplayName("validarYObtenerEmail con token válido → devuelve el email")
-    void validarYObtenerEmail_tokenValido_devuelveEmail() {
+    @DisplayName("obtenerClaimsValidados con token válido → subject = email")
+    void obtenerClaimsValidados_tokenValido_devuelveEmail() {
         String token = jwtService.generarToken(usuario);
 
-        String email = jwtService.validarYObtenerEmail(token);
+        String email = jwtService.obtenerClaimsValidados(token).getSubject();
 
         assertThat(email).isEqualTo("test@ejemplo.com");
     }

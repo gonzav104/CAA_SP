@@ -27,6 +27,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -60,6 +61,9 @@ class AuthServiceTest {
 
     @Mock
     private RateLimitService rateLimitService;
+
+    @Spy
+    private TokenSeguro tokenSeguro = new TokenSeguro();
 
     @InjectMocks
     private AuthService authService;
@@ -179,7 +183,7 @@ class AuthServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    @DisplayName("Login con Google (usuario EXISTENTE) → requiereRol=false, token presente, no crea usuario")
+    @DisplayName("Login con Google (usuario EXISTENTE) → requiereRegistro=false, token presente, no crea usuario")
     void loginConGoogle_usuarioExistente_devuelveToken() {
         usuarioExistente.setGoogleSub("google-sub");
         given(googleTokenVerifier.verificar("id-token-valido"))
@@ -191,7 +195,7 @@ class AuthServiceTest {
 
         GoogleLoginResult result = authService.loginConGoogle("id-token-valido");
 
-        assertThat(result.dto().requiereRol()).isFalse();
+        assertThat(result.dto().requiereRegistro()).isFalse();
         assertThat(result.dto().tipo()).isEqualTo("Bearer");
         assertThat(result.dto().email()).isNull();
         assertThat(result.dto().nombre()).isNull();
@@ -200,7 +204,7 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("Login con Google (usuario NO existente) → requiereRol=true, sin token, SIN crear usuario")
+    @DisplayName("Login con Google (usuario NO existente) → requiereRegistro=true, sin token, SIN crear usuario")
     void loginConGoogle_usuarioNuevo_pideRol() {
         given(googleTokenVerifier.verificar("id-token-valido"))
                 .willReturn(Optional.of(new GoogleUsuario("google-sub", "nuevo@ejemplo.com", "Nuevo Usuario")));
@@ -209,7 +213,7 @@ class AuthServiceTest {
 
         GoogleLoginResult result = authService.loginConGoogle("id-token-valido");
 
-        assertThat(result.dto().requiereRol()).isTrue();
+        assertThat(result.dto().requiereRegistro()).isTrue();
         assertThat(result.dto().tipo()).isNull();
         assertThat(result.dto().email()).isEqualTo("nuevo@ejemplo.com");
         assertThat(result.dto().nombre()).isEqualTo("Nuevo Usuario");
@@ -261,7 +265,7 @@ class AuthServiceTest {
         verify(emailService).enviarBienvenida(creado);
 
         // Respuesta
-        assertThat(result.dto().requiereRol()).isFalse();
+        assertThat(result.dto().requiereRegistro()).isFalse();
         assertThat(result.dto().tipo()).isEqualTo("Bearer");
         assertThat(result.token()).isPresent().contains("jwt-token-familiar");
     }
@@ -283,7 +287,7 @@ class AuthServiceTest {
         GoogleLoginResult result = authService.completarRegistroGoogle(dto);
 
         // Login con la cuenta existente, no crea duplicado
-        assertThat(result.dto().requiereRol()).isFalse();
+        assertThat(result.dto().requiereRegistro()).isFalse();
         assertThat(result.dto().tipo()).isEqualTo("Bearer");
         assertThat(result.token()).isPresent().contains("jwt-token-carrera");
         verify(usuarioRepository, never()).save(any());
@@ -457,7 +461,7 @@ class AuthServiceTest {
     // ──────────────────────────────────────────────
 
     /**
-     * Misma codificación que AuthService.hashResetToken: SHA-256 en hex.
+     * Misma codificación que TokenSeguro.hash: SHA-256 en hex.
      * Si el helper de producción cambiara, estos asserts fallarían.
      */
     private static String hashSha256(String token) {

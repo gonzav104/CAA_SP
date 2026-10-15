@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Tarea 6.1: confirma que {@code TokenSeguro.hash} reproduce, byte por byte, el mismo esquema de
- * hashing que {@code AuthService#hashResetToken} (SHA-256, hex en minúsculas) para un input
+ * hashing SHA-256 hex en minúsculas usado para los tokens persistidos para un input
  * conocido, y que {@code generar()} produce tokens aleatorios, no vacíos y Base64URL válidos.
  */
 @DisplayName("TokenSeguro — generación y hashing de tokens de invitación")
@@ -23,7 +23,7 @@ class TokenSeguroTest {
     private final TokenSeguro tokenSeguro = new TokenSeguro();
 
     @Test
-    @DisplayName("hash() reproduce el mismo esquema SHA-256 hex que AuthService.hashResetToken")
+    @DisplayName("hash() reproduce el esquema SHA-256 hex de referencia")
     void hash_coincideConElEsquemaDeAuthService() throws NoSuchAlgorithmException {
         String tokenConocido = "token-de-prueba-123";
 
@@ -58,7 +58,7 @@ class TokenSeguroTest {
         assertThat(generados).hasSize(3);
     }
 
-    /** Reimplementación exacta, aislada, de {@code AuthService#hashResetToken} para comparar. */
+    /** Reimplementación exacta, aislada, del esquema SHA-256 hex para comparar. */
     private static String referenciaHashResetToken(String token) throws NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
