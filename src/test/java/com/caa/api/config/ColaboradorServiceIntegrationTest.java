@@ -35,6 +35,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -115,6 +117,9 @@ class ColaboradorServiceIntegrationTest {
     }
 
     private String aceptarComo(String emailDestino, Usuario quienAcepta) {
+        // The invitation email is deferred until commit; this test transaction never commits,
+        // so fire the registered afterCommit callbacks to obtain the token it would send.
+        TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
         ArgumentCaptor<String> tokenCaptor = ArgumentCaptor.forClass(String.class);
         verify(emailService).enviarInvitacionFamiliar(eq(emailDestino), any(Paciente.class), any(PermisoColaborador.class),
                 tokenCaptor.capture());

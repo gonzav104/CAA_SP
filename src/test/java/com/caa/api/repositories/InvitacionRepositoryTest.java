@@ -128,6 +128,34 @@ class InvitacionRepositoryTest {
         assertThat(recargada.getEstado()).isEqualTo(EstadoInvitacion.ACEPTADA);
     }
 
+    @Test
+    @DisplayName("revocarSiPendiente: PENDIENTE devuelve 1 y transiciona a REVOCADA con resueltaEn")
+    void revocarPendienteDevuelveUno() {
+        Invitacion invitacion = crearInvitacion(LocalDateTime.now().plusDays(1));
+
+        int filas = invitacionRepository.revocarSiPendiente(invitacion.getId(), LocalDateTime.now());
+
+        assertThat(filas).isEqualTo(1);
+        Invitacion recargada = invitacionRepository.findById(invitacion.getId()).orElseThrow();
+        assertThat(recargada.getEstado()).isEqualTo(EstadoInvitacion.REVOCADA);
+        assertThat(recargada.getResueltaEn()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("revocarSiPendiente: ya ACEPTADA devuelve 0 y conserva estado y aceptadaPor")
+    void revocarYaAceptadaDevuelveCeroYConservaAceptadaPor() {
+        Usuario quienAcepta = crearUsuario("acepta-revoca@invitacion.test");
+        Invitacion invitacion = crearInvitacion(LocalDateTime.now().plusDays(1));
+        invitacionRepository.aceptarSiVigente(invitacion.getId(), quienAcepta, LocalDateTime.now());
+
+        int filas = invitacionRepository.revocarSiPendiente(invitacion.getId(), LocalDateTime.now());
+
+        assertThat(filas).isZero();
+        Invitacion recargada = invitacionRepository.findById(invitacion.getId()).orElseThrow();
+        assertThat(recargada.getEstado()).isEqualTo(EstadoInvitacion.ACEPTADA);
+        assertThat(recargada.getAceptadaPor().getId()).isEqualTo(quienAcepta.getId());
+    }
+
     private int esperar(Future<Integer> future) {
         try {
             return future.get(5, TimeUnit.SECONDS);

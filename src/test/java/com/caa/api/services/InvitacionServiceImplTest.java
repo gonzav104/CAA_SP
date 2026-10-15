@@ -39,10 +39,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -247,12 +250,31 @@ class InvitacionServiceImplTest {
                 .estado(EstadoInvitacion.PENDIENTE).build();
         given(invitacionRepository.findById(invitacionId)).willReturn(Optional.of(invitacion));
 
+        given(invitacionRepository.revocarSiPendiente(eq(invitacionId), any(LocalDateTime.class))).willReturn(1);
+
         invitacionService.revocarOrganizacion(organizacionId, invitacionId, emailOwner);
 
-        ArgumentCaptor<Invitacion> captor = ArgumentCaptor.forClass(Invitacion.class);
-        verify(invitacionRepository).save(captor.capture());
-        assertThat(captor.getValue().getEstado()).isEqualTo(EstadoInvitacion.REVOCADA);
-        assertThat(captor.getValue().getResueltaEn()).isNotNull();
+        // Conditional UPDATE (PENDIENTE -> REVOCADA) instead of read-then-save: no race with accept.
+        verify(invitacionRepository).revocarSiPendiente(eq(invitacionId), any(LocalDateTime.class));
+        verify(invitacionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Revocar una invitación ya ACEPTADA es idempotente: sin error y sin sobrescribir la fila")
+    void revocarOrganizacion_yaAceptada_noOpSinSave() {
+        given(accesoService.exigirRolGestion(organizacionId, owner, Set.of(RolGestion.OWNER, RolGestion.ADMIN)))
+                .willReturn(membresia(RolGestion.OWNER));
+        UUID invitacionId = UUID.randomUUID();
+        Invitacion invitacion = Invitacion.builder()
+                .id(invitacionId).tipo(TipoInvitacion.ORGANIZACION).organizacion(organizacion)
+                .estado(EstadoInvitacion.ACEPTADA).aceptadaPor(owner).build();
+        given(invitacionRepository.findById(invitacionId)).willReturn(Optional.of(invitacion));
+        given(invitacionRepository.revocarSiPendiente(eq(invitacionId), any(LocalDateTime.class))).willReturn(0);
+
+        invitacionService.revocarOrganizacion(organizacionId, invitacionId, emailOwner);
+
+        verify(invitacionRepository, never()).save(any());
+        assertThat(invitacion.getEstado()).isEqualTo(EstadoInvitacion.ACEPTADA);
     }
 
     @Test
@@ -430,5 +452,61 @@ class InvitacionServiceImplTest {
                 .isInstanceOf(RecursoNoEncontradoException.class);
 
         verify(invitacionRepository, never()).saveAndFlush(any());
+    }
+
+    // ──────────────────────────────────────────────
+    //  EMAIL AFTER COMMIT
+    // ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("Con transacción activa, el email de invitación sale solo tras el commit")
+    void crearOrganizacion_emailSoloTrasCommit() {
+        prepararCrearOrganizacion();
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            invitacionService.crearOrganizacion(organizacionId,
+                    new InvitacionOrganizacionRegistroDTO("nuevo@ejemplo.com", RolGestion.MIEMBRO, true), emailOwner);
+            verify(emailService, never()).enviarInvitacionOrganizacion(any(), any(), any(), anyBoolean(), any());
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+            verify(emailService).enviarInvitacionOrganizacion("nuevo@ejemplo.com", organizacion, RolGestion.MIEMBRO, true, "token-crudo");
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("Si la transacción hace rollback, el email de invitación nunca sale")
+    void crearFamiliar_rollback_noEnviaEmail() {
+        UUID pacienteId = UUID.randomUUID();
+        Paciente paciente = Paciente.builder().id(pacienteId).nombre("Nico").apellido("Perez").build();
+        given(accesoService.exigirCapacidad(pacienteId, owner, Capacidad.GESTION_CLINICA))
+                .willReturn(new AccesoPaciente(paciente, membresia(RolGestion.OWNER), false, null));
+        given(invitacionRepository.findByPaciente_IdAndEmailAndEstado(any(), any(), any()))
+                .willReturn(Optional.empty());
+        given(tokenSeguro.generar()).willReturn("token-fam");
+        given(tokenSeguro.hash("token-fam")).willReturn("hash-fam");
+        given(invitacionRepository.saveAndFlush(any(Invitacion.class))).willAnswer(inv -> inv.getArgument(0));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            invitacionService.crearFamiliar(pacienteId, "familiar@ejemplo.com", PermisoColaborador.LECTURA, emailOwner);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(emailService, never()).enviarInvitacionFamiliar(any(), any(), any(), any());
+    }
+
+    private void prepararCrearOrganizacion() {
+        given(accesoService.exigirRolGestion(organizacionId, owner, Set.of(RolGestion.OWNER, RolGestion.ADMIN)))
+                .willReturn(membresia(RolGestion.OWNER));
+        given(tokenSeguro.generar()).willReturn("token-crudo");
+        given(tokenSeguro.hash("token-crudo")).willReturn("hash-xyz");
+        given(invitacionRepository.findByOrganizacion_IdAndEmailAndEstado(any(), any(), any()))
+                .willReturn(Optional.empty());
+        given(invitacionRepository.saveAndFlush(any(Invitacion.class))).willAnswer(inv -> inv.getArgument(0));
     }
 }

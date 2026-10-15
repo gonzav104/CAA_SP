@@ -176,14 +176,11 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
             return new RecursoResuelto(global, null);
         }
 
-        // Tiene custom: validar que pertenezca al mismo paciente
+        // Tiene custom: validar que pertenezca al mismo paciente. Uno ajeno responde igual que uno
+        // inexistente (404) para no revelar UUIDs de otros pacientes.
         PictogramaCustom custom = pictogramaCustomRepository.findById(customId)
+                .filter(c -> c.getPaciente().getId().equals(pacienteId))
                 .orElseThrow(() -> new RecursoNoEncontradoException("Pictograma custom no encontrado"));
-
-        if (!custom.getPaciente().getId().equals(pacienteId)) {
-            throw new IllegalArgumentException(
-                    "El pictograma custom no pertenece al paciente dueño de esta cartilla");
-        }
 
         return new RecursoResuelto(null, custom);
     }

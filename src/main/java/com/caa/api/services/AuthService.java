@@ -18,8 +18,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.dao.DataIntegrityViolationException;
 
 @Service
@@ -84,7 +82,7 @@ public class AuthService {
         try {
             // Flush UNIQUE email/subject races before emitting credentials; never fall back to email.
             Usuario saved = usuarioRepository.saveAndFlush(nuevo);
-            afterCommit(() -> emailService.enviarBienvenida(saved));
+            AfterCommit.run(() -> emailService.enviarBienvenida(saved));
             return authenticateGoogle(saved, google);
         } catch (DataIntegrityViolationException conflict) {
             throw new CredencialesInvalidasException();
@@ -123,7 +121,7 @@ public class AuthService {
         usuario.setGoogleRecoverySub(google.sub());
         usuario.setGoogleRecoveryEmail(google.email());
         usuarioRepository.saveAndFlush(usuario);
-        afterCommit(() -> emailService.enviarRecuperacionGoogle(usuario, token));
+        AfterCommit.run(() -> emailService.enviarRecuperacionGoogle(usuario, token));
     }
 
     /** The row lock serializes consumption with reissue, ordinary reset and forgot-password. */
@@ -168,19 +166,6 @@ public class AuthService {
         usuario.setGoogleRecoveryEmail(null);
     }
 
-    private static void afterCommit(Runnable notification) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            notification.run();
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                notification.run();
-            }
-        });
-    }
-
     public record GoogleLoginResult(GoogleAuthResponseDTO dto, Optional<String> token) {
     }
 
@@ -203,7 +188,7 @@ public class AuthService {
             usuario.setResetTokenExpira(LocalDateTime.now().plusHours(1));
             usuarioRepository.save(usuario);
 
-            afterCommit(() -> emailService.enviarRecuperacionPassword(usuario, token));
+            AfterCommit.run(() -> emailService.enviarRecuperacionPassword(usuario, token));
         });
     }
 

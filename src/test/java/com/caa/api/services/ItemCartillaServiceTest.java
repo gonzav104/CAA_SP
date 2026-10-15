@@ -243,7 +243,7 @@ class ItemCartillaServiceTest {
     }
 
     @Test
-    @DisplayName("Item con recursoCustom de OTRO paciente → lanza excepción (ownership del recurso)")
+    @DisplayName("Item con recursoCustom de OTRO paciente → 404 indistinguible de uno inexistente (sin oráculo)")
     void crear_customDeOtroPaciente_lanzaExcepcion() {
         prepararAcceso();
 
@@ -260,8 +260,8 @@ class ItemCartillaServiceTest {
 
         assertThatThrownBy(() ->
                 itemCartillaService.crearItem(pacienteId, cartillaId, categoriaId, dto, "test@ejemplo.com"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("no pertenece al paciente");
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessage("Pictograma custom no encontrado");
     }
 
     // ──────────────────────────────────────────────

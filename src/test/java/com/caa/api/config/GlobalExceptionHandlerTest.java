@@ -2,12 +2,18 @@ package com.caa.api.config;
 
 import com.caa.api.exceptions.AccesoDenegadoException;
 import java.util.Map;
+import java.util.Properties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.support.PropertiesLoaderUtils;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -79,5 +85,50 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().get("status")).isEqualTo(404);
         assertThat(response.getBody().get("message")).isEqualTo("La ruta solicitada no existe");
+    }
+
+    @Test
+    @DisplayName("MaxUploadSizeExceededException → 413 genérico")
+    void archivoDemasiadoGrande_mapeaA413Generico() {
+        ResponseEntity<Map<String, Object>> response =
+                handler.handleArchivoDemasiadoGrande(new MaxUploadSizeExceededException(5L * 1024 * 1024));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONTENT_TOO_LARGE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("status")).isEqualTo(413);
+        assertThat(response.getBody().get("message")).isEqualTo("El archivo supera el tamaño máximo permitido de 5MB");
+    }
+
+    @Test
+    @DisplayName("MissingServletRequestPartException → 400 genérico")
+    void parteMultipartFaltante_mapeaA400Generico() {
+        ResponseEntity<Map<String, Object>> response =
+                handler.handleParteFaltante(new MissingServletRequestPartException("imagen"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("status")).isEqualTo(400);
+        assertThat(response.getBody().get("message")).isEqualTo("Falta una parte requerida de la solicitud");
+    }
+
+    @Test
+    @DisplayName("HttpMediaTypeNotSupportedException → 415 genérico")
+    void tipoDeContenidoNoSoportado_mapeaA415Generico() {
+        ResponseEntity<Map<String, Object>> response = handler.handleTipoContenidoNoSoportado(
+                new HttpMediaTypeNotSupportedException("Content-Type 'text/plain' is not supported"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("status")).isEqualTo(415);
+        assertThat(response.getBody().get("message")).isEqualTo("El tipo de contenido de la solicitud no es soportado");
+    }
+
+    @Test
+    @DisplayName("Límites multipart alineados con el máximo de 5MB de CloudinaryServiceImpl")
+    void limitesMultipartConfigurados() throws Exception {
+        Properties props = PropertiesLoaderUtils.loadProperties(new ClassPathResource("application.properties"));
+
+        assertThat(props.getProperty("spring.servlet.multipart.max-file-size")).isEqualTo("5MB");
+        assertThat(props.getProperty("spring.servlet.multipart.max-request-size")).isEqualTo("6MB");
     }
 }
