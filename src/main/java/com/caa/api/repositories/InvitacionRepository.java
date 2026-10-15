@@ -39,4 +39,15 @@ public interface InvitacionRepository extends JpaRepository<Invitacion, UUID> {
             + "i.aceptadaPor = :usuario, i.resueltaEn = :ahora "
             + "WHERE i.id = :id AND i.estado = com.caa.api.models.EstadoInvitacion.PENDIENTE AND i.expiraEn > :ahora")
     int aceptarSiVigente(@Param("id") UUID id, @Param("usuario") Usuario usuario, @Param("ahora") LocalDateTime ahora);
+
+    /**
+     * Revocación condicional: solo transiciona PENDIENTE -&gt; REVOCADA. Igual que
+     * {@link #aceptarSiVigente}, evita la carrera de leer-y-guardar contra un accept concurrente
+     * (0 filas si ya está resuelta) y no toca {@code aceptadaPor}.
+     */
+    @Modifying
+    @Transactional
+    @Query("UPDATE Invitacion i SET i.estado = com.caa.api.models.EstadoInvitacion.REVOCADA, i.resueltaEn = :ahora "
+            + "WHERE i.id = :id AND i.estado = com.caa.api.models.EstadoInvitacion.PENDIENTE")
+    int revocarSiPendiente(@Param("id") UUID id, @Param("ahora") LocalDateTime ahora);
 }

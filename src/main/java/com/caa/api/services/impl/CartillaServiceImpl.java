@@ -48,8 +48,8 @@ public class CartillaServiceImpl implements CartillaService {
 
     @Override
     @Transactional
-    public CartillaResponseDTO crearCartilla(UUID pacienteId, CartillaRegistroDTO dto, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public CartillaResponseDTO crearCartilla(UUID pacienteId, CartillaRegistroDTO dto, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Gate de acceso: EDITAR_CONTENIDO (equipo o familiar con EDICION_LIMITADA) — design-part2 §11.2
@@ -80,8 +80,8 @@ public class CartillaServiceImpl implements CartillaService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CartillaResponseDTO> obtenerCartillasDePaciente(UUID pacienteId, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public List<CartillaResponseDTO> obtenerCartillasDePaciente(UUID pacienteId, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
@@ -204,8 +204,8 @@ public class CartillaServiceImpl implements CartillaService {
 
     @Override
     @Transactional
-    public void eliminarCartilla(UUID pacienteId, UUID cartillaId, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public void eliminarCartilla(UUID pacienteId, UUID cartillaId, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Acceso clínico (GESTION_CLINICA), nunca creador_id (design-part2 §11.2, R2)

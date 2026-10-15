@@ -7,9 +7,9 @@ import java.util.List;
 import java.util.UUID;
 
 public interface SesionService {
-    SesionResponseDTO registrarSesion(UUID pacienteId, SesionRegistroDTO dto, String emailTerapeuta);
-    List<SesionResponseDTO> obtenerSesionesDePaciente(UUID pacienteId, String emailTerapeuta);
-    SesionResponseDTO obtenerSesion(UUID pacienteId, UUID sesionId, String emailTerapeuta);
-    SesionResponseDTO actualizarSesion(UUID pacienteId, UUID sesionId, SesionActualizacionDTO dto, String emailTerapeuta);
-    void eliminarSesion(UUID pacienteId, UUID sesionId, String emailTerapeuta);
+    SesionResponseDTO registrarSesion(UUID pacienteId, SesionRegistroDTO dto, String email);
+    List<SesionResponseDTO> obtenerSesionesDePaciente(UUID pacienteId, String email);
+    SesionResponseDTO obtenerSesion(UUID pacienteId, UUID sesionId, String email);
+    SesionResponseDTO actualizarSesion(UUID pacienteId, UUID sesionId, SesionActualizacionDTO dto, String email);
+    void eliminarSesion(UUID pacienteId, UUID sesionId, String email);
 }

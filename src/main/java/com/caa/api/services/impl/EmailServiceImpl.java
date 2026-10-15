@@ -32,7 +32,7 @@ public class EmailServiceImpl implements EmailService {
     @Override
     public void enviarBienvenida(Usuario usuario) {
         String asunto = "¡Bienvenido a CAA SP!";
-        String html = "<p>Hola <strong>" + usuario.getNombre() + "</strong>,</p>"
+        String html = "<p>Hola <strong>" + HtmlUtils.htmlEscape(usuario.getNombre()) + "</strong>,</p>"
                 + "<p>Tu cuenta en CAA SP fue creada correctamente. Ya podés empezar a usar la aplicación.</p>";
 
         enviar(usuario, asunto, html);
@@ -55,7 +55,7 @@ public class EmailServiceImpl implements EmailService {
     public void enviarRecuperacionPassword(Usuario usuario, String token) {
         String enlace = frontendUrl + "/restablecer-password?token=" + token;
         String asunto = "Recupera tu contraseña";
-        String html = "<p>Hola <strong>" + usuario.getNombre() + "</strong>,</p>"
+        String html = "<p>Hola <strong>" + HtmlUtils.htmlEscape(usuario.getNombre()) + "</strong>,</p>"
                 + "<p>Recibimos un pedido para restablecer tu contraseña.</p>"
                 + "<p>Este enlace es válido por 1 hora:</p>"
                 + "<p><a href=\"" + enlace + "\">Restablecer mi contraseña</a></p>"

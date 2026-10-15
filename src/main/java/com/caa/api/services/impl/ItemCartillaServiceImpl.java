@@ -42,8 +42,8 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     @Override
     @Transactional
     public ItemCartillaResponseDTO crearItem(UUID pacienteId, UUID cartillaId, UUID categoriaId,
-                                             ItemCartillaRegistroDTO dto, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                                             ItemCartillaRegistroDTO dto, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de creador_id (design-part2 §11.2)
@@ -79,8 +79,8 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     @Override
     @Transactional(readOnly = true)
     public List<ItemCartillaResponseDTO> obtenerItemsDeCategoria(UUID pacienteId, UUID cartillaId,
-                                                                 UUID categoriaId, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                                                                 UUID categoriaId, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER);
@@ -99,8 +99,8 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
     @Override
     @Transactional
     public ItemCartillaResponseDTO actualizarItem(UUID pacienteId, UUID cartillaId, UUID categoriaId, UUID itemId,
-                                                  ItemCartillaActualizacionDTO dto, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+                                                  ItemCartillaActualizacionDTO dto, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de creador_id (design-part2 §11.2)
@@ -139,8 +139,8 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
 
     @Override
     @Transactional
-    public void eliminarItem(UUID pacienteId, UUID cartillaId, UUID categoriaId, UUID itemId, String emailTerapeuta) {
-        Usuario usuario = usuarioRepository.findByEmail(emailTerapeuta)
+    public void eliminarItem(UUID pacienteId, UUID cartillaId, UUID categoriaId, UUID itemId, String email) {
+        Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado"));
 
         // Acceso deriva del paciente (EDITAR_CONTENIDO), nunca de creador_id (design-part2 §11.2)
@@ -176,14 +176,11 @@ public class ItemCartillaServiceImpl implements ItemCartillaService {
             return new RecursoResuelto(global, null);
         }
 
-        // Tiene custom: validar que pertenezca al mismo paciente
+        // Tiene custom: validar que pertenezca al mismo paciente. Uno ajeno responde igual que uno
+        // inexistente (404) para no revelar UUIDs de otros pacientes.
         PictogramaCustom custom = pictogramaCustomRepository.findById(customId)
+                .filter(c -> c.getPaciente().getId().equals(pacienteId))
                 .orElseThrow(() -> new RecursoNoEncontradoException("Pictograma custom no encontrado"));
-
-        if (!custom.getPaciente().getId().equals(pacienteId)) {
-            throw new IllegalArgumentException(
-                    "El pictograma custom no pertenece al paciente dueño de esta cartilla");
-        }
 
         return new RecursoResuelto(null, custom);
     }

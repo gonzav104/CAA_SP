@@ -83,6 +83,27 @@ class EmailServiceTest {
     }
 
     @Test
+    void welcomeEscapesName() throws ResendException {
+        usuario.setNombre("<script>unsafe</script>");
+        emailService.enviarBienvenida(usuario);
+        ArgumentCaptor<CreateEmailOptions> options = ArgumentCaptor.forClass(CreateEmailOptions.class);
+        verify(emails).send(options.capture());
+        assertThat(options.getValue().getHtml()).contains("&lt;script&gt;unsafe&lt;/script&gt;")
+                .doesNotContain("<script>");
+    }
+
+    @Test
+    void passwordRecoveryEscapesName() throws ResendException {
+        usuario.setNombre("<script>unsafe</script>");
+        emailService.enviarRecuperacionPassword(usuario, "safe-url-token");
+        ArgumentCaptor<CreateEmailOptions> options = ArgumentCaptor.forClass(CreateEmailOptions.class);
+        verify(emails).send(options.capture());
+        assertThat(options.getValue().getHtml()).contains("&lt;script&gt;unsafe&lt;/script&gt;",
+                "http://localhost:5173/restablecer-password?token=safe-url-token")
+                .doesNotContain("<script>");
+    }
+
+    @Test
     void googleRecoveryDeliveryFailureDoesNotLeakOrFailOperation() throws ResendException {
         given(emails.send(any(CreateEmailOptions.class))).willThrow(new ResendException("offline"));
         assertThatCode(() -> emailService.enviarRecuperacionGoogle(usuario, "secret-token"))

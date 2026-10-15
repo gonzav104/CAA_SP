@@ -8,10 +8,10 @@ import java.util.List;
 import java.util.UUID;
 
 public interface CartillaService {
-    CartillaResponseDTO crearCartilla(UUID pacienteId, CartillaRegistroDTO dto, String emailTerapeuta);
-    List<CartillaResponseDTO> obtenerCartillasDePaciente(UUID pacienteId, String emailTerapeuta);
+    CartillaResponseDTO crearCartilla(UUID pacienteId, CartillaRegistroDTO dto, String email);
+    List<CartillaResponseDTO> obtenerCartillasDePaciente(UUID pacienteId, String email);
     CartillaDetalleResponseDTO obtenerCartillaDetalle(UUID pacienteId, UUID cartillaId, String email);
-    CartillaResponseDTO actualizarCartilla(UUID pacienteId, UUID cartillaId, CartillaActualizacionDTO dto, String emailTerapeuta);
-    CartillaResponseDTO establecerCartillaPrincipal(UUID pacienteId, UUID cartillaId, String emailTerapeuta);
-    void eliminarCartilla(UUID pacienteId, UUID cartillaId, String emailTerapeuta);
+    CartillaResponseDTO actualizarCartilla(UUID pacienteId, UUID cartillaId, CartillaActualizacionDTO dto, String email);
+    CartillaResponseDTO establecerCartillaPrincipal(UUID pacienteId, UUID cartillaId, String email);
+    void eliminarCartilla(UUID pacienteId, UUID cartillaId, String email);
 }

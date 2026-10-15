@@ -303,7 +303,7 @@ class RecuperoPasswordIntegrationTest {
     }
 
     /**
-     * Misma codificación que AuthService.hashResetToken: SHA-256 en hex.
+     * Misma codificación que TokenSeguro.hash: SHA-256 en hex.
      * Si el helper de producción cambiara, estos asserts fallarían.
      */
     private static String hashSha256(String token) {

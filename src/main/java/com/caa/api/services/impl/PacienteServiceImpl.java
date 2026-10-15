@@ -188,26 +188,6 @@ public class PacienteServiceImpl implements PacienteService {
         pacienteRepository.delete(acceso.paciente());
     }
 
-    /**
-     * Fachada reutilizable (design-part2 §11.1): delega en
-     * {@code AccesoService.exigirCapacidad(LEER)}. Sin producción propia en {@code src/main} desde
-     * que {@code CartillaServiceImpl}, {@code PictogramaCustomServiceImpl} y los demás llamadores
-     * de Fase 3 migraron a llamar {@code AccesoService} directamente, pero se mantiene en la
-     * interfaz como fachada reutilizable para futuros llamadores (Fase 4+), no se elimina.
-     */
-    @Override
-    @Transactional(readOnly = true)
-    public Paciente pacienteLegibleParaUsuario(UUID pacienteId, Usuario usuario) {
-        return accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.LEER).paciente();
-    }
-
-    /** Fachada reutilizable (ver {@link #pacienteLegibleParaUsuario}): exige {@code EDITAR_CONTENIDO}. */
-    @Override
-    @Transactional(readOnly = true)
-    public void verificarEdicionParaUsuario(UUID pacienteId, Usuario usuario) {
-        accesoService.exigirCapacidad(pacienteId, usuario, Capacidad.EDITAR_CONTENIDO);
-    }
-
     private PacienteResponseDTO toResponseDTO(Paciente p, PermisoColaborador miPermiso) {
         UUID organizacionId = p.getOrganizacion().getId();
         return new PacienteResponseDTO(

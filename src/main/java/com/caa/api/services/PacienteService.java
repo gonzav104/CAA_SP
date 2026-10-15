@@ -3,8 +3,6 @@ package com.caa.api.services;
 import com.caa.api.dtos.PacienteActualizacionDTO;
 import com.caa.api.dtos.PacienteRegistroDTO;
 import com.caa.api.dtos.PacienteResponseDTO;
-import com.caa.api.models.Paciente;
-import com.caa.api.models.Usuario;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,7 +16,7 @@ public interface PacienteService {
      */
     PacienteResponseDTO registrarPaciente(UUID organizacionId, PacienteRegistroDTO dto, String email);
 
-    List<PacienteResponseDTO> obtenerMisPacientes(String emailTerapeuta);
+    List<PacienteResponseDTO> obtenerMisPacientes(String email);
 
     /**
      * {@code GET /api/organizaciones/{organizacionId}/pacientes}: rolGestion OWNER/ADMIN ve todo
@@ -27,8 +25,6 @@ public interface PacienteService {
      */
     List<PacienteResponseDTO> obtenerPacientesDeOrganizacion(UUID organizacionId, String email);
     PacienteResponseDTO obtenerPaciente(UUID id, String email);
-    PacienteResponseDTO actualizarPaciente(UUID id, PacienteActualizacionDTO dto, String emailTerapeuta);
-    void eliminarPaciente(UUID id, String emailTerapeuta);
-    Paciente pacienteLegibleParaUsuario(UUID pacienteId, Usuario usuario);
-    void verificarEdicionParaUsuario(UUID pacienteId, Usuario usuario);
+    PacienteResponseDTO actualizarPaciente(UUID id, PacienteActualizacionDTO dto, String email);
+    void eliminarPaciente(UUID id, String email);
 }

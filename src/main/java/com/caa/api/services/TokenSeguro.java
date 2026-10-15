@@ -9,12 +9,12 @@ import java.util.HexFormat;
 import org.springframework.stereotype.Component;
 
 /**
- * Generación y hashing de tokens de invitación (design §9.1). El token crudo nunca se persiste;
- * solo su hash SHA-256 viaja a la base de datos ({@code invitaciones.token_hash}).
+ * Generación y hashing de tokens de un solo uso (design §9.1): invitaciones, recupero de
+ * contraseña y recuperación de identidad Google. El token crudo nunca se persiste; solo su hash
+ * SHA-256 viaja a la base de datos.
  * <p>
- * {@link #hash(String)} usa EXACTAMENTE la misma codificación que
- * {@code AuthService#hashResetToken} (SHA-256, hex en minúsculas) para mantener un único idiom
- * de hashing de tokens en todo el proyecto.
+ * {@link #hash(String)} es el único idiom de hashing de tokens del proyecto (SHA-256, hex en
+ * minúsculas).
  */
 @Component
 public class TokenSeguro {
@@ -29,7 +29,7 @@ public class TokenSeguro {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    /** SHA-256 en hex (minúsculas) del token plano — idéntico a {@code AuthService#hashResetToken}. */
+    /** SHA-256 en hex (minúsculas) del token plano. */
     public String hash(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

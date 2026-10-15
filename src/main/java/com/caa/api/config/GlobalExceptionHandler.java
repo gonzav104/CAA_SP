@@ -13,11 +13,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -208,6 +211,49 @@ public class GlobalExceptionHandler {
                         "status", 404,
                         "error", "Recurso no encontrado",
                         "message", "La ruta solicitada no existe"
+                ));
+    }
+
+    /**
+     * 413 genérico cuando el multipart supera spring.servlet.multipart.max-file-size /
+     * max-request-size (5MB/6MB). Sin este handler caía en el catch-all 500.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleArchivoDemasiadoGrande(
+            MaxUploadSizeExceededException ex) {
+        log.warn("MaxUploadSizeExceededException: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 413,
+                        "error", "Archivo demasiado grande",
+                        "message", "El archivo supera el tamaño máximo permitido de 5MB"
+                ));
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<Map<String, Object>> handleParteFaltante(
+            MissingServletRequestPartException ex) {
+        log.warn("MissingServletRequestPartException: parte={}", ex.getRequestPartName());
+        return ResponseEntity.badRequest()
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 400,
+                        "error", "Solicitud invalida",
+                        "message", "Falta una parte requerida de la solicitud"
+                ));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleTipoContenidoNoSoportado(
+            HttpMediaTypeNotSupportedException ex) {
+        log.warn("HttpMediaTypeNotSupportedException: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(Map.of(
+                        "timestamp", LocalDateTime.now().toString(),
+                        "status", 415,
+                        "error", "Tipo de contenido no soportado",
+                        "message", "El tipo de contenido de la solicitud no es soportado"
                 ));
     }
 

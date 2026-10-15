@@ -176,7 +176,9 @@ class GoogleRecoveryPostgresIntegrationTest {
         assertThat(recovered.getGoogleRecoveryExpiresAt()).isNull();
         assertThat(recovered.getGoogleRecoverySub()).isNull();
         assertThat(recovered.getGoogleRecoveryEmail()).isNull();
-        assertThat(users.findByResetToken(resetHash)).isEmpty();
+        Optional<Usuario> byResetHash = new TransactionTemplate(transactionManager)
+                .execute(transaction -> users.findLockedByResetToken(resetHash));
+        assertThat(byResetHash).isEmpty();
         assertThatThrownBy(() -> auth.login(new LoginRequestDTO(victim.getEmail(), OLD_PASSWORD)))
                 .isInstanceOf(CredencialesInvalidasException.class);
         assertThat(auth.login(new LoginRequestDTO(victim.getEmail(), NEW_PASSWORD)).token()).isNotBlank();

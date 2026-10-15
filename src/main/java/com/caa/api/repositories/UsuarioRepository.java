@@ -27,5 +27,4 @@ public interface UsuarioRepository extends JpaRepository<Usuario, UUID> {
 
     Optional<Usuario> findByGoogleSub(String googleSub);
     Optional<Usuario> findByEmail(String email);
-    Optional<Usuario> findByResetToken(String resetToken);
 }

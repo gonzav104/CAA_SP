@@ -57,7 +57,7 @@ class ColaboradorServiceTest {
     private UUID terapeutaId;
     private UUID pacienteId;
     private UUID familiarId;
-    private String emailTerapeuta;
+    private String email;
     private Usuario terapeuta;
     private Paciente paciente;
     private Usuario familiar;
@@ -67,11 +67,11 @@ class ColaboradorServiceTest {
         terapeutaId = UUID.randomUUID();
         pacienteId = UUID.randomUUID();
         familiarId = UUID.randomUUID();
-        emailTerapeuta = "terapeuta@ejemplo.com";
+        email = "terapeuta@ejemplo.com";
 
         terapeuta = Usuario.builder()
                 .id(terapeutaId)
-                .email(emailTerapeuta)
+                .email(email)
                 .nombre("Terapeuta")
                 .build();
         paciente = Paciente.builder()
@@ -88,7 +88,7 @@ class ColaboradorServiceTest {
     }
 
     private void givenAutenticado() {
-        given(usuarioRepository.findByEmail(emailTerapeuta)).willReturn(Optional.of(terapeuta));
+        given(usuarioRepository.findByEmail(email)).willReturn(Optional.of(terapeuta));
     }
 
     // ──────────────────────────────────────────────
@@ -103,13 +103,13 @@ class ColaboradorServiceTest {
                 UUID.randomUUID(), TipoInvitacion.PACIENTE_FAMILIAR, "nuevo@ejemplo.com",
                 null, null, PermisoColaborador.LECTURA, EstadoInvitacion.PENDIENTE,
                 LocalDateTime.now().plusDays(7));
-        given(invitacionService.crearFamiliar(pacienteId, "nuevo@ejemplo.com", PermisoColaborador.LECTURA, emailTerapeuta))
+        given(invitacionService.crearFamiliar(pacienteId, "nuevo@ejemplo.com", PermisoColaborador.LECTURA, email))
                 .willReturn(esperado);
 
-        InvitacionResponseDTO response = colaboradorService.vincularColaborador(pacienteId, dto, emailTerapeuta);
+        InvitacionResponseDTO response = colaboradorService.vincularColaborador(pacienteId, dto, email);
 
         assertThat(response).isEqualTo(esperado);
-        verify(invitacionService).crearFamiliar(pacienteId, "nuevo@ejemplo.com", PermisoColaborador.LECTURA, emailTerapeuta);
+        verify(invitacionService).crearFamiliar(pacienteId, "nuevo@ejemplo.com", PermisoColaborador.LECTURA, email);
         verify(accesoService, never()).exigirCapacidad(any(), any(), any());
     }
 
@@ -124,7 +124,7 @@ class ColaboradorServiceTest {
         given(accesoService.exigirCapacidad(pacienteId, terapeuta, Capacidad.GESTION_CLINICA))
                 .willThrow(new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos"));
 
-        assertThatThrownBy(() -> colaboradorService.obtenerColaboradores(pacienteId, emailTerapeuta))
+        assertThatThrownBy(() -> colaboradorService.obtenerColaboradores(pacienteId, email))
                 .isInstanceOf(RecursoNoEncontradoException.class);
 
         verify(pacienteFamiliarRepository, never()).findByPaciente_Id(any());
@@ -143,7 +143,7 @@ class ColaboradorServiceTest {
                 .build();
         given(pacienteFamiliarRepository.findByPaciente_Id(pacienteId)).willReturn(List.of(v1, v2));
 
-        List<ColaboradorResponseDTO> resultado = colaboradorService.obtenerColaboradores(pacienteId, emailTerapeuta);
+        List<ColaboradorResponseDTO> resultado = colaboradorService.obtenerColaboradores(pacienteId, email);
 
         assertThat(resultado).hasSize(2);
         assertThat(resultado.get(0).email()).isEqualTo("mama@ejemplo.com");
@@ -164,7 +164,7 @@ class ColaboradorServiceTest {
 
         ColaboradorActualizacionDTO dto = new ColaboradorActualizacionDTO(PermisoColaborador.LECTURA);
 
-        assertThatThrownBy(() -> colaboradorService.actualizarPermiso(pacienteId, familiarId, dto, emailTerapeuta))
+        assertThatThrownBy(() -> colaboradorService.actualizarPermiso(pacienteId, familiarId, dto, email))
                 .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("Usuario no encontrado");
 
@@ -185,7 +185,7 @@ class ColaboradorServiceTest {
         given(pacienteFamiliarRepository.save(any(PacienteFamiliar.class))).willReturn(actualizado);
 
         ColaboradorActualizacionDTO dto = new ColaboradorActualizacionDTO(PermisoColaborador.EDICION_LIMITADA);
-        ColaboradorResponseDTO response = colaboradorService.actualizarPermiso(pacienteId, familiarId, dto, emailTerapeuta);
+        ColaboradorResponseDTO response = colaboradorService.actualizarPermiso(pacienteId, familiarId, dto, email);
 
         assertThat(response.permiso()).isEqualTo(PermisoColaborador.EDICION_LIMITADA);
         verify(accesoService).exigirCapacidad(eq(pacienteId), eq(terapeuta), eq(Capacidad.GESTION_CLINICA));
@@ -202,7 +202,7 @@ class ColaboradorServiceTest {
         given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
                 .willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> colaboradorService.revocarColaborador(pacienteId, familiarId, emailTerapeuta))
+        assertThatThrownBy(() -> colaboradorService.revocarColaborador(pacienteId, familiarId, email))
                 .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("Usuario no encontrado");
 
@@ -217,7 +217,7 @@ class ColaboradorServiceTest {
         given(pacienteFamiliarRepository.findByPaciente_IdAndUsuario_Id(pacienteId, familiarId))
                 .willReturn(Optional.of(vinculo));
 
-        colaboradorService.revocarColaborador(pacienteId, familiarId, emailTerapeuta);
+        colaboradorService.revocarColaborador(pacienteId, familiarId, email);
 
         verify(pacienteFamiliarRepository).delete(vinculo);
     }

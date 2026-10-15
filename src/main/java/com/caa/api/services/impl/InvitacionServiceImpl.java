@@ -27,6 +27,7 @@ import com.caa.api.repositories.UsuarioRepository;
 import com.caa.api.services.AccesoService;
 import com.caa.api.services.AccesoService.AccesoPaciente;
 import com.caa.api.services.AccesoService.Capacidad;
+import com.caa.api.services.AfterCommit;
 import com.caa.api.services.EmailService;
 import com.caa.api.services.InvitacionService;
 import com.caa.api.services.TokenSeguro;
@@ -105,8 +106,10 @@ public class InvitacionServiceImpl implements InvitacionService {
         String tokenCrudo = emitirToken(invitacion);
         Invitacion guardada = invitacionRepository.saveAndFlush(invitacion);
 
-        // Efecto secundario: EmailServiceImpl nunca propaga excepciones.
-        emailService.enviarInvitacionOrganizacion(email, organizacion, dto.rolGestion(), dto.esTerapeuta(), tokenCrudo);
+        // Efecto secundario tras el commit (un rollback nunca envía un token no persistido);
+        // EmailServiceImpl nunca propaga excepciones.
+        AfterCommit.run(() -> emailService.enviarInvitacionOrganizacion(
+                email, organizacion, dto.rolGestion(), dto.esTerapeuta(), tokenCrudo));
 
         return toResponseDTO(guardada);
     }
@@ -161,8 +164,9 @@ public class InvitacionServiceImpl implements InvitacionService {
         String tokenCrudo = emitirToken(invitacion);
         Invitacion guardada = invitacionRepository.saveAndFlush(invitacion);
 
-        // Efecto secundario: EmailServiceImpl nunca propaga excepciones.
-        emailService.enviarInvitacionFamiliar(email, paciente, permiso, tokenCrudo);
+        // Efecto secundario tras el commit (un rollback nunca envía un token no persistido);
+        // EmailServiceImpl nunca propaga excepciones.
+        AfterCommit.run(() -> emailService.enviarInvitacionFamiliar(email, paciente, permiso, tokenCrudo));
 
         return toResponseDTO(guardada);
     }
@@ -307,13 +311,12 @@ public class InvitacionServiceImpl implements InvitacionService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Invitación no encontrada"));
     }
 
-    /** Revocar es idempotente: una invitación ya resuelta (ACEPTADA/REVOCADA/EXPIRADA) no cambia. */
+    /**
+     * Revocar es idempotente: una invitación ya resuelta (ACEPTADA/REVOCADA/EXPIRADA) no cambia.
+     * UPDATE condicional (no leer-y-guardar) para no pisar un accept concurrente; 0 filas = no-op.
+     */
     private void revocarSiPendiente(Invitacion invitacion) {
-        if (invitacion.getEstado() == EstadoInvitacion.PENDIENTE) {
-            invitacion.setEstado(EstadoInvitacion.REVOCADA);
-            invitacion.setResueltaEn(LocalDateTime.now());
-            invitacionRepository.save(invitacion);
-        }
+        invitacionRepository.revocarSiPendiente(invitacion.getId(), LocalDateTime.now());
     }
 
     private InvitacionResponseDTO toResponseDTO(Invitacion i) {
