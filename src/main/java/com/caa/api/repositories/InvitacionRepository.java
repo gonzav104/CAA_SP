@@ -32,12 +32,17 @@ public interface InvitacionRepository extends JpaRepository<Invitacion, UUID> {
      * si no expiró. Devuelve la cantidad de filas afectadas (0 o 1); el servicio solo continúa
      * si devuelve 1 — nunca confía en una lectura previa seguida de un update separado, que
      * dejaría una ventana de carrera para un accept doble.
+     * <p>
+     * Los estados se enlazan con SpEL ({@code :#{T(...).X}}) y NO como literal de enum en el HQL: Hibernate
+     * emite el literal de enum de un UPDATE como {@code cast(... as estadoinvitacion)}, un tipo que no existe
+     * en PostgreSQL (el enum real es {@code estado_invitacion}); H2 sí lo crea con ese nombre y lo ocultaba.
      */
     @Modifying
     @Transactional
-    @Query("UPDATE Invitacion i SET i.estado = com.caa.api.models.EstadoInvitacion.ACEPTADA, "
+    @Query("UPDATE Invitacion i SET i.estado = :#{T(com.caa.api.models.EstadoInvitacion).ACEPTADA}, "
             + "i.aceptadaPor = :usuario, i.resueltaEn = :ahora "
-            + "WHERE i.id = :id AND i.estado = com.caa.api.models.EstadoInvitacion.PENDIENTE AND i.expiraEn > :ahora")
+            + "WHERE i.id = :id AND i.estado = :#{T(com.caa.api.models.EstadoInvitacion).PENDIENTE} "
+            + "AND i.expiraEn > :ahora")
     int aceptarSiVigente(@Param("id") UUID id, @Param("usuario") Usuario usuario, @Param("ahora") LocalDateTime ahora);
 
     /**
@@ -47,7 +52,8 @@ public interface InvitacionRepository extends JpaRepository<Invitacion, UUID> {
      */
     @Modifying
     @Transactional
-    @Query("UPDATE Invitacion i SET i.estado = com.caa.api.models.EstadoInvitacion.REVOCADA, i.resueltaEn = :ahora "
-            + "WHERE i.id = :id AND i.estado = com.caa.api.models.EstadoInvitacion.PENDIENTE")
+    @Query("UPDATE Invitacion i SET i.estado = :#{T(com.caa.api.models.EstadoInvitacion).REVOCADA}, "
+            + "i.resueltaEn = :ahora WHERE i.id = :id "
+            + "AND i.estado = :#{T(com.caa.api.models.EstadoInvitacion).PENDIENTE}")
     int revocarSiPendiente(@Param("id") UUID id, @Param("ahora") LocalDateTime ahora);
 }
