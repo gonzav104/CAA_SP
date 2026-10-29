@@ -9,7 +9,6 @@ import com.caa.api.models.Paciente;
 import com.caa.api.models.PacienteFamiliar;
 import com.caa.api.models.PacienteTerapeuta;
 import com.caa.api.models.PacienteTerapeutaId;
-import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.Usuario;
 import com.caa.api.repositories.MembresiaRepository;
 import com.caa.api.repositories.PacienteFamiliarRepository;
@@ -25,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -74,7 +74,8 @@ public class PacienteServiceImpl implements PacienteService {
             pacienteTerapeutaRepository.save(asignacion);
         }
 
-        return toResponseDTO(guardado, null);
+        // El creador queda asignado exactamente cuando esTerapeuta = true (fila guardada arriba).
+        return toResponseDTO(new AccesoPaciente(guardado, membresia, membresia.isEsTerapeuta(), null));
     }
 
     /**
@@ -82,6 +83,7 @@ public class PacienteServiceImpl implements PacienteService {
      * consulta de pacientes (gestión + asignados clínicos, omitida por completo cuando ambos
      * conjuntos de organizaciones están vacíos), 1 consulta de vínculos familiares. El acceso de
      * equipo (gestión o clínico asignado) tiene precedencia sobre el familiar al deduplicar.
+     * Las capacidades se derivan de las membresías ya cargadas, sin consultas adicionales.
      */
     @Override
     @Transactional(readOnly = true)
@@ -99,11 +101,16 @@ public class PacienteServiceImpl implements PacienteService {
                 .map(m -> m.getOrganizacion().getId())
                 .collect(Collectors.toSet());
 
+        Map<UUID, Membresia> membresiaPorOrg = membresias.stream()
+                .collect(Collectors.toMap(m -> m.getOrganizacion().getId(), Function.identity()));
+
         Map<UUID, PacienteResponseDTO> porId = new LinkedHashMap<>();
 
         if (!orgIdsGestion.isEmpty() || !orgIdsClinicas.isEmpty()) {
             for (Paciente p : pacienteRepository.findAccesiblesPorEquipo(orgIdsGestion, orgIdsClinicas, usuario.getId())) {
-                porId.put(p.getId(), toResponseDTO(p, null));
+                Membresia membresia = membresiaPorOrg.get(p.getOrganizacion().getId());
+                // Fuera de gestión, la consulta solo devuelve pacientes asignados clínicamente.
+                porId.put(p.getId(), toResponseDTO(new AccesoPaciente(p, membresia, !membresia.esGestion(), null)));
             }
         }
 
@@ -111,7 +118,8 @@ public class PacienteServiceImpl implements PacienteService {
             Paciente p = vinculo.getPaciente();
             // El acceso de equipo tiene precedencia: si ya está presente, NO se sobrescribe
             // (quedaría con miPermiso=null, correcto para acceso de equipo).
-            porId.putIfAbsent(p.getId(), toResponseDTO(p, vinculo.getPermiso()));
+            porId.putIfAbsent(p.getId(), toResponseDTO(new AccesoPaciente(
+                    p, membresiaPorOrg.get(p.getOrganizacion().getId()), false, vinculo.getPermiso())));
         }
 
         return List.copyOf(porId.values());
@@ -141,7 +149,10 @@ public class PacienteServiceImpl implements PacienteService {
             return List.of();
         }
 
-        return pacientes.stream().map(p -> toResponseDTO(p, null)).toList();
+        boolean asignado = !membresia.esGestion();
+        return pacientes.stream()
+                .map(p -> toResponseDTO(new AccesoPaciente(p, membresia, asignado, null)))
+                .toList();
     }
 
     @Override
@@ -152,7 +163,7 @@ public class PacienteServiceImpl implements PacienteService {
 
         AccesoPaciente acceso = accesoService.exigirCapacidad(id, usuario, Capacidad.LEER);
 
-        return toResponseDTO(acceso.paciente(), acceso.permisoFamiliar());
+        return toResponseDTO(acceso);
     }
 
     @Override
@@ -173,7 +184,8 @@ public class PacienteServiceImpl implements PacienteService {
 
         Paciente pacienteActualizado = pacienteRepository.save(paciente);
 
-        return toResponseDTO(pacienteActualizado, null);
+        return toResponseDTO(new AccesoPaciente(
+                pacienteActualizado, acceso.membresia(), acceso.asignado(), acceso.permisoFamiliar()));
     }
 
     /** Baja de paciente: ADMINISTRAR (rolGestion OWNER/ADMIN), independiente de esTerapeuta (design R3). */
@@ -188,7 +200,9 @@ public class PacienteServiceImpl implements PacienteService {
         pacienteRepository.delete(acceso.paciente());
     }
 
-    private PacienteResponseDTO toResponseDTO(Paciente p, PermisoColaborador miPermiso) {
+    /** {@code miPermiso} es null salvo acceso efectivo familiar: AccesoPaciente nunca lo combina con equipo. */
+    private PacienteResponseDTO toResponseDTO(AccesoPaciente acceso) {
+        Paciente p = acceso.paciente();
         UUID organizacionId = p.getOrganizacion().getId();
         return new PacienteResponseDTO(
                 p.getId(),
@@ -196,9 +210,10 @@ public class PacienteServiceImpl implements PacienteService {
                 p.getApellido(),
                 p.getFechaNacimiento(),
                 p.getCreadoEn(),
-                miPermiso,
+                acceso.permisoFamiliar(),
                 p.getGridSize(),
-                organizacionId
+                organizacionId,
+                acceso.capacidadesEfectivas()
         );
     }
 }

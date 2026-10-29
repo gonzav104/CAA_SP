@@ -5,6 +5,7 @@ import com.caa.api.models.Paciente;
 import com.caa.api.models.PermisoColaborador;
 import com.caa.api.models.RolGestion;
 import com.caa.api.models.Usuario;
+import java.util.EnumSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -83,6 +84,30 @@ public interface AccesoService {
         /** Acceso de equipo (gestión o clínico asignado), independiente del acceso familiar. */
         public boolean esEquipo() {
             return esGestion() || esClinicoAsignado();
+        }
+
+        /** Matriz de capacidades de design-part2 §11.1: única fuente de verdad. */
+        public boolean tiene(Capacidad capacidad) {
+            return switch (capacidad) {
+                case LEER -> esEquipo() || permisoFamiliar != null;
+                case EDITAR_CONTENIDO -> esEquipo() || permisoFamiliar == PermisoColaborador.EDICION_LIMITADA;
+                case GESTION_CLINICA -> esEquipo();
+                case ADMINISTRAR -> esGestion();
+            };
+        }
+
+        /**
+         * Capacidades efectivas expuestas al cliente, derivadas de {@link #tiene}. {@code LEER} se
+         * omite: quien recibe el paciente ya puede leerlo.
+         */
+        public Set<Capacidad> capacidadesEfectivas() {
+            Set<Capacidad> capacidades = EnumSet.noneOf(Capacidad.class);
+            for (Capacidad capacidad : Capacidad.values()) {
+                if (capacidad != Capacidad.LEER && tiene(capacidad)) {
+                    capacidades.add(capacidad);
+                }
+            }
+            return capacidades;
         }
     }
 

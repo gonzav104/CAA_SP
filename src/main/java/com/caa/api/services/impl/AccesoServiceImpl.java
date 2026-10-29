@@ -103,20 +103,9 @@ public class AccesoServiceImpl implements AccesoService {
     @Override
     public AccesoPaciente exigirCapacidad(UUID pacienteId, Usuario usuario, Capacidad capacidad) {
         AccesoPaciente acceso = resolverAccesoPaciente(pacienteId, usuario);
-        if (!tieneCapacidad(acceso, capacidad)) {
+        if (!acceso.tiene(capacidad)) {
             throw new RecursoNoEncontradoException("Paciente no encontrado o no tiene permisos");
         }
         return acceso;
-    }
-
-    /** Matriz de capacidades de design-part2 §11.1. */
-    private boolean tieneCapacidad(AccesoPaciente acceso, Capacidad capacidad) {
-        return switch (capacidad) {
-            case LEER -> acceso.esEquipo() || acceso.permisoFamiliar() != null;
-            case EDITAR_CONTENIDO -> acceso.esEquipo()
-                    || acceso.permisoFamiliar() == PermisoColaborador.EDICION_LIMITADA;
-            case GESTION_CLINICA -> acceso.esEquipo();
-            case ADMINISTRAR -> acceso.esGestion();
-        };
     }
 }
